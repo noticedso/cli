@@ -64,6 +64,7 @@ export const SearchResponseSchema = z.object({
   query: z.string(),
   offset: z.number(),
   limit: z.number(),
+  total: z.number(),
   hasMore: z.boolean(),
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
@@ -118,12 +119,16 @@ export class NoticedApiClient {
     limit?: number;
     offset?: number;
     paths?: boolean;
+    sort?: string;
+    source?: string;
   }): Promise<SearchResponse> {
     const raw = await this.fetch("/api/search", {
       q: query,
       limit: String(options?.limit ?? 25),
       offset: String(options?.offset ?? 0),
       paths: options?.paths === false ? "false" : "true",
+      sort: options?.sort ?? "",
+      source: options?.source ?? "",
     });
     return SearchResponseSchema.parse(raw);
   }

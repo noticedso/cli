@@ -130,6 +130,7 @@ describe("API Client Schemas", () => {
       query: "test",
       offset: 0,
       limit: 25,
+      total: 0,
       hasMore: false,
     };
     expect(SearchResponseSchema.parse(response)).toEqual(response);
