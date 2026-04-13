@@ -15,9 +15,27 @@
  *   echo '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{...}}' | noticed mcp
  */
 
+import { z } from "zod";
 import { createClientFromEnv, type SearchResponse, type ConnectionPath } from "./api-client.js";
 import { VERSION } from "./version.js";
 import * as readline from "node:readline";
+
+// ---------------------------------------------------------------------------
+// Zod schemas for tool input validation (single source of truth)
+// ---------------------------------------------------------------------------
+
+const SearchNetworkArgsSchema = z.object({
+  query: z.string().min(1, "query is required and must be non-empty"),
+  limit: z.number().int().min(1).max(50).default(25),
+  offset: z.number().int().min(0).default(0),
+  source: z.enum(["github", "linkedin"]).optional(),
+  include_paths: z.boolean().default(true),
+});
+
+const GetConnectionPathArgsSchema = z.object({
+  query: z.string().min(1, "query is required and must be non-empty"),
+  max_hops: z.number().int().min(1).max(6).default(4),
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -153,6 +171,7 @@ export async function startMcpServer(options?: McpServerOptions): Promise<void> 
     try {
       request = JSON.parse(trimmed) as JsonRpcRequest;
     } catch {
+      // JSON-RPC 2.0 §5.1: Parse error
       sendResponse({
         jsonrpc: "2.0",
         id: null,
@@ -162,6 +181,7 @@ export async function startMcpServer(options?: McpServerOptions): Promise<void> 
     }
 
     if (request.jsonrpc !== "2.0") {
+      // JSON-RPC 2.0 §5.1: Invalid Request
       sendResponse({
         jsonrpc: "2.0",
         id: request.id ?? null,
@@ -178,6 +198,7 @@ export async function startMcpServer(options?: McpServerOptions): Promise<void> 
       .catch((err) => {
         log.error(`Handler error: ${err}`);
         if (request.id != null) {
+          // JSON-RPC 2.0 §5.1: Internal error
           sendResponse({
             jsonrpc: "2.0",
             id: request.id,
@@ -191,6 +212,15 @@ export async function startMcpServer(options?: McpServerOptions): Promise<void> 
     log.info("MCP server stdin closed, exiting.");
     process.exit(0);
   });
+
+  // Graceful shutdown on signals
+  const shutdown = () => {
+    log.info("Received shutdown signal, exiting.");
+    rl.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 
   // Keep process alive
   process.stdin.resume();
@@ -227,10 +257,11 @@ async function handleRequest(
 
     case "tools/list":
       if (!initialized) {
+        // MCP spec: -32002 = Server not ready (must call initialize first)
         return {
           jsonrpc: "2.0",
           id: id ?? null,
-          error: { code: -32002, message: "Server not initialized" },
+          error: { code: -32002, message: "Server not initialized — call initialize first" },
         };
       }
       return {
@@ -241,16 +272,18 @@ async function handleRequest(
 
     case "tools/call":
       if (!initialized) {
+        // MCP spec: -32002 = Server not ready
         return {
           jsonrpc: "2.0",
           id: id ?? null,
-          error: { code: -32002, message: "Server not initialized" },
+          error: { code: -32002, message: "Server not initialized — call initialize first" },
         };
       }
       return handleToolCall(id ?? null, params as { name: string; arguments?: Record<string, unknown> }, log);
 
     default:
       if (isNotification) return null;
+      // JSON-RPC 2.0 §5.1: Method not found
       return {
         jsonrpc: "2.0",
         id: id ?? null,
@@ -265,19 +298,20 @@ async function handleToolCall(
   log: Logger,
 ): Promise<JsonRpcResponse> {
   const toolName = params?.name;
-  const args = params?.arguments ?? {};
+  const rawArgs = params?.arguments ?? {};
 
-  log.debug(`Tool call: ${toolName}(${JSON.stringify(args)})`);
+  log.debug(`Tool call: ${toolName}(${JSON.stringify(rawArgs)})`);
 
   try {
     switch (toolName) {
       case "search_network":
-        return await handleSearchNetwork(id, args);
+        return await handleSearchNetwork(id, rawArgs);
 
       case "get_connection_path":
-        return await handleGetConnectionPath(id, args);
+        return await handleGetConnectionPath(id, rawArgs);
 
       default:
+        // JSON-RPC 2.0 §5.1: Invalid params (unknown tool)
         return {
           jsonrpc: "2.0",
           id,
@@ -299,36 +333,39 @@ async function handleToolCall(
 
 async function handleSearchNetwork(
   id: string | number | null,
-  args: Record<string, unknown>,
+  rawArgs: Record<string, unknown>,
 ): Promise<JsonRpcResponse> {
-  const query = String(args["query"] ?? "");
-  if (!query.trim()) {
+  // Validate input against Zod schema
+  const parsed = SearchNetworkArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     return {
       jsonrpc: "2.0",
       id,
       result: {
-        content: [{ type: "text", text: "Error: query parameter is required" }],
+        content: [{ type: "text", text: `Invalid arguments: ${issues}` }],
         isError: true,
       },
     };
   }
 
+  const args = parsed.data;
   const client = createClientFromEnv();
-  const result: SearchResponse = await client.search(query, {
-    limit: typeof args["limit"] === "number" ? args["limit"] : 25,
-    offset: typeof args["offset"] === "number" ? args["offset"] : 0,
-    paths: args["include_paths"] !== false,
+  const result: SearchResponse = await client.search(args.query, {
+    limit: args.limit,
+    offset: args.offset,
+    paths: args.include_paths,
   });
 
   // Filter by source if specified
   let hits = result.hits;
-  if (typeof args["source"] === "string") {
-    hits = hits.filter((h) => h.source === args["source"]);
+  if (args.source) {
+    hits = hits.filter((h) => h.source === args.source);
   }
 
   // Format as readable text for the agent
   const lines: string[] = [];
-  lines.push(`Found ${hits.length} result${hits.length !== 1 ? "s" : ""} for "${query}"`);
+  lines.push(`Found ${hits.length} result${hits.length !== 1 ? "s" : ""} for "${args.query}"`);
   if (result.hasMore) lines.push("(more results available with pagination)");
   lines.push("");
 
@@ -370,23 +407,27 @@ async function handleSearchNetwork(
 
 async function handleGetConnectionPath(
   id: string | number | null,
-  args: Record<string, unknown>,
+  rawArgs: Record<string, unknown>,
 ): Promise<JsonRpcResponse> {
-  const query = String(args["query"] ?? "");
-  if (!query.trim()) {
+  // Validate input against Zod schema
+  const parsed = GetConnectionPathArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     return {
       jsonrpc: "2.0",
       id,
       result: {
-        content: [{ type: "text", text: "Error: query parameter is required" }],
+        content: [{ type: "text", text: `Invalid arguments: ${issues}` }],
         isError: true,
       },
     };
   }
 
+  const args = parsed.data;
+
   // Use search with paths to find the person and their connection path
   const client = createClientFromEnv();
-  const result = await client.search(query, {
+  const result = await client.search(args.query, {
     limit: 5,
     paths: true,
   });
@@ -406,7 +447,7 @@ async function handleGetConnectionPath(
   }
 
   const lines: string[] = [];
-  lines.push(`Connection path${result.paths.length > 1 ? "s" : ""} to "${query}":\n`);
+  lines.push(`Connection path${result.paths.length > 1 ? "s" : ""} to "${args.query}":\n`);
 
   for (const path of result.paths) {
     lines.push(formatPathText(path));

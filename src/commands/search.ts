@@ -166,11 +166,11 @@ function printPath(path: ConnectionPath, chalk: ChalkLike): void {
 type ChalkLike = any;
 
 async function loadChalk(noColor?: boolean) {
-  const chalk = await import("chalk");
   if (noColor) {
-    // Return a chalk instance with no color
-    return new chalk.Chalk({ level: 0 });
+    // Force chalk to disable colors via env before importing
+    process.env["FORCE_COLOR"] = "0";
   }
+  const chalk = await import("chalk");
   return chalk.default;
 }
 

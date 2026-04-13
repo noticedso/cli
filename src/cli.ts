@@ -58,4 +58,4 @@ program
   .option("--show", "Show current configuration")
   .action(configCommand);
 
-program.parse();
+program.parse(process.argv);
