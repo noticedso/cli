@@ -1,0 +1,50 @@
+{
+  "name": "@noticed/cli",
+  "version": "0.0.0",
+  "description": "CLI and MCP server for noticed developer intelligence — search your network, trace connections, and discover paths.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "noticed": "./bin/noticed.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "skills"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp-server.d.ts",
+      "default": "./dist/mcp-server.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "check-types": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "chalk": "^5.4.1",
+    "ora": "^8.2.0",
+    "cli-table3": "^0.6.5",
+    "conf": "^13.1.0",
+    "open": "^10.1.0",
+    "zod": "^3.25.11"
+  },
+  "devDependencies": {
+    "@noticed/eslint-config": "*",
+    "@noticed/typescript-config": "*",
+    "@types/node": "^22.15.30",
+    "eslint": "^9.31.0",
+    "typescript": "5.8.2",
+    "vitest": "^4.0.16"
+  },
+  "license": "MIT"
+}

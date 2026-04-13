@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "noticed": {
+      "command": "npx",
+      "args": ["-y", "@noticed/cli", "mcp"],
+      "env": {
+        "NOTICED_API_URL": "https://your-instance.noticed.so",
+        "NOTICED_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
