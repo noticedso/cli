@@ -156,6 +156,22 @@ export class NoticedApiClient {
     });
     return SearchResponseSchema.parse(raw);
   }
+
+  async hydrate(hits: SearchHit[]): Promise<SearchHit[]> {
+    const url = new URL(`${this.baseUrl}/api/search/hydrate`);
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ hits }),
+    });
+    if (!res.ok) return hits; // fallback to unhyrated
+    const data = (await res.json()) as { hits: unknown[] };
+    return z.array(SearchHitSchema).parse(data.hits);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -53,11 +53,23 @@ export async function searchCommand(
 
     spinner?.stop();
 
+    // Hydrate enrichment data (tags, location, etc.) in background
+    const hydratedPromise = client.hydrate(result.hits).catch(() => result.hits);
+
     // Filter by source if specified
     let hits = result.hits;
     if (options.source) {
       const src = options.source.toLowerCase();
       hits = hits.filter((h) => h.source === src);
+    }
+
+    // Wait for hydration before rendering (runs in parallel with filtering)
+    const hydrated = await hydratedPromise;
+    if (options.source) {
+      const src = options.source.toLowerCase();
+      hits = hydrated.filter((h) => h.source === src);
+    } else {
+      hits = hydrated;
     }
 
     // ── JSON output ───────────────────────────────────────────────────
