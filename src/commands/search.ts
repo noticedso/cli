@@ -2,7 +2,10 @@ import { createClientFromEnv, type SearchHit, type ConnectionPath } from "../api
 import { resolveClientConfig } from "./config.js";
 
 const DEFAULT_COLUMNS = ["name", "company", "source", "matched", "skills"];
-const ALL_COLUMNS = ["name", "company", "source", "matched", "skills", "headline"];
+const ALL_COLUMNS = [
+  "name", "company", "source", "matched", "skills", "headline",
+  "tags", "ai_tools", "location", "languages", "followers",
+];
 
 interface SearchOptions {
   limit: string;
@@ -166,6 +169,11 @@ function columnLabel(col: string): string {
     case "matched": return "Matched";
     case "skills": return "Skills";
     case "headline": return "Headline";
+    case "tags": return "Tags";
+    case "ai_tools": return "AI Tools";
+    case "location": return "Location";
+    case "languages": return "Languages";
+    case "followers": return "Followers";
     default: return col;
   }
 }
@@ -181,6 +189,18 @@ function getColumnValue(hit: SearchHit, col: string): string {
     case "matched": return hit.matched_on;
     case "skills": return [...hit.profile_skills, ...hit.topics].slice(0, 3).join(", ");
     case "headline": return hit.profile_headline ?? "";
+    case "tags": return hit.tags?.map((t) => t.tag).slice(0, 3).join(", ") ?? "";
+    case "ai_tools": return hit.ai_tools?.join(", ") ?? "";
+    case "location": return [hit.city, hit.country].filter(Boolean).join(", ");
+    case "languages": return hit.languages?.slice(0, 4).join(", ") ?? "";
+    case "followers": {
+      const gh = hit.github_followers;
+      const li = hit.linkedin_follower_count;
+      const parts: string[] = [];
+      if (gh != null && gh > 0) parts.push(`GH:${gh}`);
+      if (li != null && li > 0) parts.push(`LI:${li}`);
+      return parts.join(" ") || "";
+    }
     default: return "";
   }
 }

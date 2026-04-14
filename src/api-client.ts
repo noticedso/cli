@@ -55,6 +55,30 @@ export const SearchHitSchema = z.object({
   profile_skills: z.array(z.string()),
   topics: z.array(z.string()),
   matched_on: z.string(),
+  relevance_score: z.number().optional(),
+  github_followers: z.number().optional(),
+  github_public_repos: z.number().optional(),
+  linkedin_connections_count: z.number().optional(),
+  linkedin_follower_count: z.number().optional(),
+  linkedin_experiences: z
+    .array(z.object({ company: z.string(), title: z.string() }))
+    .optional(),
+  linkedin_educations: z
+    .array(z.object({ school: z.string(), degree: z.string() }))
+    .optional(),
+  tags: z
+    .array(
+      z.object({
+        tag: z.string(),
+        category: z.string(),
+        confidence: z.number(),
+      }),
+    )
+    .optional(),
+  ai_tools: z.array(z.string()).optional(),
+  city: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+  languages: z.array(z.string()).optional(),
 });
 export type SearchHit = z.infer<typeof SearchHitSchema>;
 
