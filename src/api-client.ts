@@ -93,6 +93,11 @@ export const SearchResponseSchema = z.object({
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
+export const PathResponseSchema = z.object({
+  path: ConnectionPathSchema.nullable(),
+});
+export type PathResponse = z.infer<typeof PathResponseSchema>;
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -155,6 +160,23 @@ export class NoticedApiClient {
       source: options?.source ?? "",
     });
     return SearchResponseSchema.parse(raw);
+  }
+
+  /**
+   * Find the shortest connection path to a person, identified by their
+   * GitHub user id (preferred) or LinkedIn username.
+   */
+  async path(opts: { to?: number | null; li?: string | null }): Promise<ConnectionPath | null> {
+    if (!opts.to && !opts.li) {
+      throw new Error("path() requires `to` (GitHub user id) or `li` (LinkedIn username)");
+    }
+    const params: Record<string, string> = {};
+    if (opts.to) params["to"] = String(opts.to);
+    else if (opts.li) params["li"] = opts.li;
+
+    const raw = await this.fetch("/api/search/path", params);
+    const parsed = PathResponseSchema.parse(raw);
+    return parsed.path;
   }
 
   async hydrate(hits: SearchHit[]): Promise<SearchHit[]> {

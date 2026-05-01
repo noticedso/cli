@@ -21,7 +21,8 @@ noticed search "<query>" [options]
 - `-l, --limit <n>` — Maximum results (default 25, max 50)
 - `-o, --offset <n>` — Pagination offset
 - `-s, --source <github|linkedin>` — Filter by source
-- `-p, --paths` — Include connection paths
+- `--sort <col:dir>` — Sort by `name:asc`, `company:desc`, etc.
+- `-p, --paths` — Lazily fetch the shortest connection path to the top 5 hits
 - `-j, --json` — Output JSON for further processing
 - `--no-color` — Disable colors
 
@@ -36,18 +37,30 @@ noticed search "AI engineers" --limit 10
 # Search by company
 noticed search "engineers at Google" --source github
 
-# Get JSON output for processing
+# Get JSON output for processing (includes paths to top 5 hits)
 noticed search "react developers" --json --paths
 
 # Paginate results
 noticed search "frontend" --offset 25 --limit 25
 ```
 
+### Find a Path
+
+```bash
+noticed path @sarahml             # by GitHub login
+noticed path 12345                # by github_user_id
+noticed path --li sarah-chen      # by LinkedIn username
+noticed path @sarahml --json      # machine-readable
+```
+
+Use this when you already know who you want to reach. The CLI resolves a login
+by searching first, then calls the dedicated `/api/search/path` endpoint.
+
 ### Configuration
 ```bash
-# Set API credentials
+# Mint an API key in the dashboard at /dashboard/api-keys, then:
 noticed config --set-url https://your-instance.noticed.so
-noticed config --set-key your-api-key
+noticed config --set-key nk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Show current config
 noticed config --show

@@ -24,18 +24,25 @@ import * as readline from "node:readline";
 // Zod schemas for tool input validation (single source of truth)
 // ---------------------------------------------------------------------------
 
-const SearchNetworkArgsSchema = z.object({
+export const SearchNetworkArgsSchema = z.object({
   query: z.string().min(1, "query is required and must be non-empty"),
   limit: z.number().int().min(1).max(50).default(25),
   offset: z.number().int().min(0).default(0),
   source: z.enum(["github", "linkedin"]).optional(),
+  sort: z.string().optional(),
   include_paths: z.boolean().default(true),
 });
 
-const GetConnectionPathArgsSchema = z.object({
-  query: z.string().min(1, "query is required and must be non-empty"),
-  max_hops: z.number().int().min(1).max(6).default(4),
-});
+export const GetConnectionPathArgsSchema = z
+  .object({
+    query: z.string().min(1).optional(),
+    github_user_id: z.number().int().positive().optional(),
+    linkedin_username: z.string().min(1).optional(),
+  })
+  .refine(
+    (v) => !!(v.query || v.github_user_id || v.linkedin_username),
+    { message: "Provide query, github_user_id, or linkedin_username" },
+  );
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,6 +112,11 @@ const TOOLS = [
           enum: ["github", "linkedin"],
           description: "Filter results by source (omit for all sources)",
         },
+        sort: {
+          type: "string",
+          description:
+            "Sort directive in the form 'column:direction' (e.g. 'name:asc', 'company:desc')",
+        },
         include_paths: {
           type: "boolean",
           description:
@@ -120,7 +132,8 @@ const TOOLS = [
     name: "get_connection_path",
     description:
       "Find the shortest connection path from the current user to a target person. " +
-      "Uses BFS traversal across GitHub collaboration and LinkedIn connection edges. " +
+      "Provide either a natural-language `query` (we search and use the top match) " +
+      "or an explicit `github_user_id` / `linkedin_username`. " +
       "Returns the path chain with profiles at each hop and the edge type (GitHub collab or LinkedIn connection).",
     inputSchema: {
       type: "object" as const,
@@ -130,15 +143,15 @@ const TOOLS = [
           description:
             "Name or identifier of the person to find a path to (e.g., 'Sarah Chen', '@sarahml', 'CTO at Vercel')",
         },
-        max_hops: {
+        github_user_id: {
           type: "number",
-          description: "Maximum path depth (1-6, default 4)",
-          minimum: 1,
-          maximum: 6,
-          default: 4,
+          description: "Numeric GitHub user id of the target (preferred when known)",
+        },
+        linkedin_username: {
+          type: "string",
+          description: "LinkedIn vanity username of the target",
         },
       },
-      required: ["query"],
       additionalProperties: false,
     },
   },
@@ -354,7 +367,9 @@ async function handleSearchNetwork(
   const result: SearchResponse = await client.search(args.query, {
     limit: args.limit,
     offset: args.offset,
-    paths: args.include_paths,
+    sort: args.sort,
+    source: args.source,
+    paths: false,
   });
 
   // Filter by source if specified
@@ -362,6 +377,21 @@ async function handleSearchNetwork(
   if (args.source) {
     hits = hits.filter((h) => h.source === args.source);
   }
+
+  // Per-row paths in parallel (the search route returns no embedded paths;
+  // we mirror the web UI's lazy /api/search/path lookup).
+  const PATH_FETCH_LIMIT = 5;
+  const paths: ConnectionPath[] = args.include_paths
+    ? (
+        await Promise.all(
+          hits.slice(0, PATH_FETCH_LIMIT).map((h) =>
+            client
+              .path({ to: h.github_user_id, li: h.connection_linkedin_username })
+              .catch(() => null),
+          ),
+        )
+      ).filter((p): p is ConnectionPath => p != null)
+    : [];
 
   // Format as readable text for the agent
   const lines: string[] = [];
@@ -385,10 +415,9 @@ async function handleSearchNetwork(
     lines.push("");
   }
 
-  // Include paths if available
-  if (result.paths.length > 0) {
+  if (paths.length > 0) {
     lines.push("Connection Paths:");
-    for (const path of result.paths) {
+    for (const path of paths) {
       lines.push(formatPathText(path));
     }
   }
@@ -399,7 +428,7 @@ async function handleSearchNetwork(
     result: {
       content: [
         { type: "text", text: lines.join("\n") },
-        { type: "text", text: JSON.stringify({ hits, paths: result.paths, hasMore: result.hasMore }) },
+        { type: "text", text: JSON.stringify({ hits, paths, hasMore: result.hasMore }) },
       ],
     },
   };
@@ -424,34 +453,56 @@ async function handleGetConnectionPath(
   }
 
   const args = parsed.data;
-
-  // Use search with paths to find the person and their connection path
   const client = createClientFromEnv();
-  const result = await client.search(args.query, {
-    limit: 5,
-    paths: true,
-  });
 
-  if (result.paths.length === 0) {
-    const hint = result.hits.length > 0
-      ? "Found matching profiles but no connection paths. The person may be directly in your network."
-      : "No matching profiles or paths found.";
+  // Resolve {to, li} from the supplied target. If only `query` was given,
+  // search and use the best match.
+  let to: number | null = args.github_user_id ?? null;
+  let li: string | null = args.linkedin_username ?? null;
+  let label = args.query ?? (to ? `#${to}` : (li ? `@${li}` : "target"));
 
+  if (!to && !li) {
+    const search = await client.search(args.query!, { limit: 5, paths: false });
+    const candidates = search.hits.filter(
+      (h) => h.github_user_id || h.connection_linkedin_username,
+    );
+    if (candidates.length === 0) {
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [
+            { type: "text", text: `No matching profiles found for "${args.query}".` },
+          ],
+        },
+      };
+    }
+    const best = candidates[0]!;
+    to = best.github_user_id;
+    li = best.connection_linkedin_username;
+    const bestName =
+      [best.connection_first_name, best.connection_last_name].filter(Boolean).join(" ") ||
+      best.github_login ||
+      best.connection_linkedin_username ||
+      label;
+    label = bestName;
+  }
+
+  const path = await client.path({ to, li });
+
+  if (!path) {
     return {
       jsonrpc: "2.0",
       id,
       result: {
-        content: [{ type: "text", text: hint }],
+        content: [
+          {
+            type: "text",
+            text: `No connection path found to ${label}. They may be outside your reachable network.`,
+          },
+        ],
       },
     };
-  }
-
-  const lines: string[] = [];
-  lines.push(`Connection path${result.paths.length > 1 ? "s" : ""} to "${args.query}":\n`);
-
-  for (const path of result.paths) {
-    lines.push(formatPathText(path));
-    lines.push("");
   }
 
   return {
@@ -459,8 +510,8 @@ async function handleGetConnectionPath(
     id,
     result: {
       content: [
-        { type: "text", text: lines.join("\n") },
-        { type: "text", text: JSON.stringify(result.paths) },
+        { type: "text", text: `Connection path to ${label}:\n${formatPathText(path)}` },
+        { type: "text", text: JSON.stringify({ path }) },
       ],
     },
   };

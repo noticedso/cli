@@ -25,7 +25,7 @@ _noticed_completions() {
   COMPREPLY=()
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
-  commands="search config mcp completion"
+  commands="search path config mcp completion"
 
   case "\${COMP_WORDS[1]}" in
     search)
@@ -34,6 +34,10 @@ _noticed_completions() {
         --source|-s) COMPREPLY=( $(compgen -W "github linkedin" -- "\${cur}") ) ;;
         --sort) COMPREPLY=( $(compgen -W "name:asc name:desc company:asc company:desc source:asc source:desc" -- "\${cur}") ) ;;
       esac
+      return 0
+      ;;
+    path)
+      COMPREPLY=( $(compgen -W "--li --json --no-color --help" -- "\${cur}") )
       return 0
       ;;
     config)
@@ -67,6 +71,7 @@ _noticed() {
   local -a commands
   commands=(
     'search:Search your developer network'
+    'path:Find the shortest connection path to a person'
     'config:Show or set configuration'
     'mcp:Start MCP server for AI agents'
     'completion:Generate shell completion script'
@@ -108,6 +113,13 @@ _noticed() {
             '--verbose[Show all columns]' \\
             '--no-color[Disable colors]'
           ;;
+        path)
+          _arguments \\
+            '--li[LinkedIn username]:username:' \\
+            '-j[Output JSON]' \\
+            '--json[Output JSON]' \\
+            '--no-color[Disable colors]'
+          ;;
         config)
           _arguments \\
             '--set-url[Set API URL]:url:' \\
@@ -132,6 +144,7 @@ function fishCompletion(): string {
   return `# noticed fish completion
 # Save to: ~/.config/fish/completions/noticed.fish
 complete -c noticed -n "__fish_use_subcommand" -a search -d "Search your developer network"
+complete -c noticed -n "__fish_use_subcommand" -a path -d "Find shortest connection path to a person"
 complete -c noticed -n "__fish_use_subcommand" -a config -d "Show or set configuration"
 complete -c noticed -n "__fish_use_subcommand" -a mcp -d "Start MCP server"
 complete -c noticed -n "__fish_use_subcommand" -a completion -d "Generate shell completions"
@@ -151,6 +164,11 @@ complete -c noticed -n "__fish_seen_subcommand_from search" -l csv -d "Output CS
 complete -c noticed -n "__fish_seen_subcommand_from search" -s q -l quiet -d "Quiet mode"
 complete -c noticed -n "__fish_seen_subcommand_from search" -l verbose -d "Show all columns"
 complete -c noticed -n "__fish_seen_subcommand_from search" -l no-color -d "Disable colors"
+
+# path subcommand
+complete -c noticed -n "__fish_seen_subcommand_from path" -l li -d "LinkedIn username"
+complete -c noticed -n "__fish_seen_subcommand_from path" -s j -l json -d "Output JSON"
+complete -c noticed -n "__fish_seen_subcommand_from path" -l no-color -d "Disable colors"
 
 # config subcommand
 complete -c noticed -n "__fish_seen_subcommand_from config" -l set-url -d "Set API URL"

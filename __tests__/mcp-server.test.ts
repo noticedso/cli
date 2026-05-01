@@ -1,20 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { z } from "zod";
 
-// Import the schemas directly by re-defining them here (since mcp-server.ts
-// doesn't export them). This tests the validation logic independent of the server.
-const SearchNetworkArgsSchema = z.object({
-  query: z.string().min(1, "query is required and must be non-empty"),
-  limit: z.number().int().min(1).max(50).default(25),
-  offset: z.number().int().min(0).default(0),
-  source: z.enum(["github", "linkedin"]).optional(),
-  include_paths: z.boolean().default(true),
-});
-
-const GetConnectionPathArgsSchema = z.object({
-  query: z.string().min(1, "query is required and must be non-empty"),
-  max_hops: z.number().int().min(1).max(6).default(4),
-});
+import {
+  SearchNetworkArgsSchema,
+  GetConnectionPathArgsSchema,
+} from "../src/mcp-server.js";
 
 describe("MCP Input Validation — SearchNetworkArgs", () => {
   it("accepts valid search args", () => {
@@ -79,38 +68,33 @@ describe("MCP Input Validation — SearchNetworkArgs", () => {
     const result = SearchNetworkArgsSchema.safeParse({ query: "test", source: "linkedin" });
     expect(result.success).toBe(true);
   });
+
+  it("accepts a sort directive", () => {
+    const result = SearchNetworkArgsSchema.safeParse({ query: "test", sort: "name:asc" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.sort).toBe("name:asc");
+  });
 });
 
 describe("MCP Input Validation — GetConnectionPathArgs", () => {
-  it("accepts valid path args", () => {
+  it("accepts a natural-language query (we'll resolve via search)", () => {
     const result = GetConnectionPathArgsSchema.safeParse({ query: "Sarah Chen" });
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.query).toBe("Sarah Chen");
-      expect(result.data.max_hops).toBe(4);
-    }
+    if (result.success) expect(result.data.query).toBe("Sarah Chen");
   });
 
-  it("accepts custom max_hops", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ query: "test", max_hops: 2 });
+  it("accepts an explicit github_user_id target without a query", () => {
+    const result = GetConnectionPathArgsSchema.safeParse({ github_user_id: 12345 });
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.max_hops).toBe(2);
-    }
   });
 
-  it("rejects empty query", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ query: "" });
-    expect(result.success).toBe(false);
+  it("accepts an explicit linkedin_username target without a query", () => {
+    const result = GetConnectionPathArgsSchema.safeParse({ linkedin_username: "sarah-chen" });
+    expect(result.success).toBe(true);
   });
 
-  it("rejects max_hops > 6", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ query: "test", max_hops: 10 });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects max_hops < 1", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ query: "test", max_hops: 0 });
+  it("rejects when neither query nor explicit target is provided", () => {
+    const result = GetConnectionPathArgsSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 });

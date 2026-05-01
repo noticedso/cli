@@ -1,10 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   SearchResponseSchema,
   SearchHitSchema,
   ConnectionPathSchema,
   PersonProfileSchema,
   PathHopSchema,
+  PathResponseSchema,
+  NoticedApiClient,
 } from "../src/api-client.js";
 
 describe("API Client Schemas", () => {
@@ -162,5 +164,83 @@ describe("API Client Schemas", () => {
       edge_type: "twitter",
     };
     expect(() => PathHopSchema.parse(hop)).toThrow();
+  });
+
+  it("PathResponseSchema accepts a null path", () => {
+    expect(PathResponseSchema.parse({ path: null })).toEqual({ path: null });
+  });
+
+  it("PathResponseSchema accepts a populated path", () => {
+    const parsed = PathResponseSchema.parse({
+      path: {
+        from_user_id: 1,
+        to_user_id: 2,
+        hops: [
+          { from_user_id: 1, to_user_id: 2, overlap_weight: 1, last_collab_at: null, edge_type: "github" },
+        ],
+        profiles: [],
+        total_hops: 1,
+      },
+    });
+    expect(parsed.path?.total_hops).toBe(1);
+  });
+});
+
+describe("NoticedApiClient.path", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function makeClient(): NoticedApiClient {
+    return new NoticedApiClient({ baseUrl: "https://noticed.so", apiKey: "nk_live_test" });
+  }
+
+  it("calls /api/search/path with the github user id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ path: null }),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = makeClient();
+    const result = await client.path({ to: 12345 });
+    expect(result).toBeNull();
+
+    const url = (fetchMock.mock.calls[0]?.[0] as string) ?? "";
+    expect(url).toContain("/api/search/path?");
+    expect(url).toContain("to=12345");
+    const init = (fetchMock.mock.calls[0]?.[1] as RequestInit) ?? {};
+    expect(((init.headers as Record<string, string>) ?? {})["Authorization"]).toBe("Bearer nk_live_test");
+  });
+
+  it("calls /api/search/path with the linkedin username when only li is provided", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        path: {
+          from_user_id: 1,
+          to_user_id: 0,
+          hops: [],
+          profiles: [],
+          total_hops: 0,
+        },
+      }),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = makeClient();
+    await client.path({ li: "sarah-chen" });
+    const url = (fetchMock.mock.calls[0]?.[0] as string) ?? "";
+    expect(url).toContain("li=sarah-chen");
+    expect(url).not.toContain("to=");
+  });
+
+  it("requires at least one of to/li", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const client = makeClient();
+    await expect(client.path({})).rejects.toThrow(/to.*or.*li/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

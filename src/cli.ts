@@ -10,6 +10,7 @@
 
 import { Command, CommanderError } from "commander";
 import { searchCommand } from "./commands/search.js";
+import { pathCommand } from "./commands/path.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { configCommand } from "./commands/config.js";
 import { completionCommand } from "./commands/completion.js";
@@ -52,6 +53,21 @@ Examples:
   noticed search "ML" --paths                    Show connection paths
   noticed search "python" --quiet                Machine-readable output`)
   .action(searchCommand);
+
+// ── path ────────────────────────────────────────────────────────────────────
+program
+  .command("path [target]")
+  .description("Find the shortest connection path to a person")
+  .option("--li <username>", "LinkedIn username (use instead of a positional GitHub login)")
+  .option("-j, --json", "Output raw JSON")
+  .option("--no-color", "Disable colored output")
+  .addHelpText("after", `
+Examples:
+  noticed path @sarahml                  Find path by GitHub login
+  noticed path 12345                     Find path by github_user_id
+  noticed path --li sarah-chen           Find path by LinkedIn username
+  noticed path @sarahml --json           Machine-readable output`)
+  .action(pathCommand);
 
 // ── mcp ─────────────────────────────────────────────────────────────────────
 program

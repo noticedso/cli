@@ -47,7 +47,7 @@ export async function searchCommand(
     const result = await client.search(query, {
       limit,
       offset,
-      paths: options.paths ?? true,
+      paths: false,
       sort: options.sort,
     });
 
@@ -55,6 +55,21 @@ export async function searchCommand(
 
     // Hydrate enrichment data (tags, location, etc.) in background
     const hydratedPromise = client.hydrate(result.hits).catch(() => result.hits);
+
+    // Per-row path lookups in parallel with hydration. The /api/search route
+    // doesn't return paths embedded in the search response — it has a dedicated
+    // /api/search/path endpoint that the web UI uses lazily, and we mirror that
+    // here for the top hits when --paths is requested.
+    const PATH_FETCH_LIMIT = 5;
+    const pathsPromise: Promise<ConnectionPath[]> = options.paths
+      ? Promise.all(
+          result.hits.slice(0, PATH_FETCH_LIMIT).map((h) =>
+            client
+              .path({ to: h.github_user_id, li: h.connection_linkedin_username })
+              .catch(() => null),
+          ),
+        ).then((arr) => arr.filter((p): p is ConnectionPath => p != null))
+      : Promise.resolve([] as ConnectionPath[]);
 
     // Filter by source if specified
     let hits = result.hits;
@@ -71,10 +86,11 @@ export async function searchCommand(
     } else {
       hits = hydrated;
     }
+    const paths = await pathsPromise;
 
     // ── JSON output ───────────────────────────────────────────────────
     if (options.json) {
-      console.log(JSON.stringify({ ...result, hits }, null, 2));
+      console.log(JSON.stringify({ ...result, hits, paths }, null, 2));
       return;
     }
 
@@ -142,9 +158,9 @@ export async function searchCommand(
     console.log(table.toString());
 
     // Connection paths
-    if (options.paths && result.paths.length > 0) {
+    if (options.paths && paths.length > 0) {
       console.log(`\n${chalk.bold("Connection Paths:")}\n`);
-      for (const path of result.paths) {
+      for (const path of paths) {
         printPath(path, chalk);
       }
     }

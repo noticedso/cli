@@ -17,19 +17,31 @@ npx @noticed/cli search "AI engineers"
 ## Quick Start
 
 ```bash
-# Configure credentials
+# 1. Mint an API key in the dashboard at /dashboard/api-keys (one-time reveal).
+# 2. Configure credentials:
 noticed config --set-url https://your-instance.noticed.so
-noticed config --set-key your-api-key
+noticed config --set-key nk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-# Search your network
+# 3. Search your network
 noticed search "react developers"
 
-# Search with paths showing how you're connected
+# 4. Find the shortest path to a specific person
+noticed path @sarahml
+noticed path --li sarah-chen
+
+# 5. Search with per-row paths to the top hits
 noticed search "Sarah Chen" --paths
 
-# Get JSON output for scripting
+# 6. JSON output for scripting
 noticed search "frontend" --json | jq '.hits[].github_login'
 ```
+
+## Authentication
+
+The CLI authenticates to your noticed instance with a Bearer API key. Mint one at
+`/dashboard/api-keys` — the secret is only shown at create time, so copy it
+immediately. Tokens look like `nk_live_…` and rate-limit at 60 requests per minute
+per key. Revoke compromised keys from the same page.
 
 ## Commands
 
@@ -52,9 +64,25 @@ noticed search "react" --limit 10 --json    # paginated JSON output
 | `-l, --limit <n>` | Maximum results | 25 |
 | `-o, --offset <n>` | Pagination offset | 0 |
 | `-s, --source <src>` | Filter: `github` or `linkedin` | all |
-| `-p, --paths` | Show connection paths | off |
+| `--sort <col:dir>` | Sort: `name:asc`, `company:desc` | none |
+| `-p, --paths` | Show connection paths to top hits | off |
 | `-j, --json` | Output raw JSON | off |
+| `--csv` | Output as CSV | off |
 | `--no-color` | Disable colors | auto |
+
+### `noticed path [target]`
+
+Find the shortest connection path between you and a specific person.
+
+```bash
+noticed path @sarahml             # by GitHub login
+noticed path 12345                # by github_user_id
+noticed path --li sarah-chen      # by LinkedIn username
+noticed path @sarahml --json      # machine-readable
+```
+
+The CLI resolves a login by searching first, then calling the path endpoint.
+Pass `--li` to skip search and look up by LinkedIn username directly.
 
 ### `noticed config`
 
