@@ -10,11 +10,7 @@ on:
   workflow_run:
     workflows: ["release"]
     types: [completed]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to publish (e.g. v0.2.0). Defaults to latest tag."
-        required: false
+  workflow_dispatch: {}
 
 jobs:
   publish:
@@ -26,9 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # When triggered by workflow_run, default ref is the workflow file's
-          # default branch — explicitly check out the tag the release pushed.
-          ref: ${{ github.event.workflow_run.head_branch || inputs.tag || github.ref }}
+          # On workflow_run, check out the tag the release was built from so
+          # version sync sees the right state. On workflow_dispatch, default
+          # to whichever ref the user invoked from (usually main).
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
 
       - name: Install mcp-publisher
         run: |
