@@ -28,7 +28,7 @@
     "node": ">=20"
   },
   "bin": {
-    "noticed": "./bin/noticed.js"
+    "noticed": "bin/noticed.js"
   },
   "files": [
     "dist",
