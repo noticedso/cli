@@ -1,0 +1,16 @@
+node_modules
+dist
+.turbo
+.tsbuildinfo
+*.tsbuildinfo
+.DS_Store
+coverage
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.idea
+.vscode/*
+!.vscode/mcp.json

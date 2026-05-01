@@ -1,0 +1,16 @@
+{
+  "name": "noticed",
+  "description": "Search your developer network, trace connections, and find the shortest path to anyone through GitHub and LinkedIn graphs. Bundles a CLI, an MCP server, and a Claude Code skill.",
+  "version": "0.2.0",
+  "author": { "name": "noticed", "url": "https://noticed.so" },
+  "homepage": "https://github.com/noticedso/cli",
+  "repository": "https://github.com/noticedso/cli",
+  "license": "MIT",
+  "mcpServers": {
+    "noticed": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@noticed/cli", "mcp"]
+    }
+  }
+}

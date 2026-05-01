@@ -1,16 +1,44 @@
 {
   "name": "@noticed/cli",
   "version": "0.2.0",
-  "description": "CLI and MCP server for noticed developer intelligence — search your network, trace connections, and discover paths.",
+  "description": "CLI and MCP server for noticed — search your developer network, trace connections, find the shortest path to anyone through GitHub and LinkedIn.",
+  "keywords": [
+    "noticed",
+    "cli",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "developer-intelligence",
+    "github",
+    "linkedin",
+    "network-search"
+  ],
+  "homepage": "https://github.com/noticedso/cli#readme",
+  "bugs": {
+    "url": "https://github.com/noticedso/cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noticedso/cli.git"
+  },
+  "license": "MIT",
+  "author": "noticed (https://noticed.so)",
   "type": "module",
-  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "noticed": "./bin/noticed.js"
   },
   "files": [
     "dist",
     "bin",
-    "skills"
+    "skills",
+    ".claude-plugin",
+    "server.json",
+    "mcp.json",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
@@ -22,29 +50,32 @@
       "default": "./dist/mcp-server.js"
     }
   },
+  "mcpName": "io.github.noticedso/cli",
   "scripts": {
     "build": "tsc",
     "check-types": "tsc --noEmit",
     "dev": "tsc --watch",
     "lint": "eslint src --max-warnings 0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run check-types && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
-    "commander": "^13.1.0",
     "chalk": "^5.4.1",
-    "ora": "^8.2.0",
     "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
     "conf": "^13.1.0",
     "open": "^10.1.0",
+    "ora": "^8.2.0",
     "zod": "^3.25.11"
   },
   "devDependencies": {
-    "@noticed/eslint-config": "*",
-    "@noticed/typescript-config": "*",
+    "@eslint/js": "^9.31.0",
     "@types/node": "^22.15.30",
     "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-unused-imports": "^4.1.4",
     "typescript": "5.8.2",
+    "typescript-eslint": "^8.37.0",
     "vitest": "^4.0.16"
-  },
-  "license": "MIT"
+  }
 }
