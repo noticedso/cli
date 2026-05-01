@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.noticedso/cli",
-  "description": "Search your developer network, trace connections, and find the shortest path to anyone through GitHub and LinkedIn collaboration graphs.",
+  "description": "Search your developer network and trace connection paths via GitHub & LinkedIn.",
   "version": "0.2.0",
   "repository": {
     "url": "https://github.com/noticedso/cli",
