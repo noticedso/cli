@@ -1,100 +1,87 @@
 import { describe, it, expect } from "vitest";
 
 import {
-  SearchNetworkArgsSchema,
-  GetConnectionPathArgsSchema,
+  SearchArgsSchema,
+  ExecuteArgsSchema,
 } from "../src/mcp-server.js";
 
-describe("MCP Input Validation — SearchNetworkArgs", () => {
-  it("accepts valid search args", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "AI engineers" });
+describe("MCP Input Validation — SearchArgs", () => {
+  it("accepts an empty object and defaults limit to 50", () => {
+    const result = SearchArgsSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.query).toBe("AI engineers");
-      expect(result.data.limit).toBe(25);
-      expect(result.data.offset).toBe(0);
-      expect(result.data.include_paths).toBe(true);
+      expect(result.data.limit).toBe(50);
+      expect(result.data.query).toBeUndefined();
+      expect(result.data.category).toBeUndefined();
     }
   });
 
-  it("accepts all optional parameters", () => {
-    const result = SearchNetworkArgsSchema.safeParse({
-      query: "react",
+  it("accepts query + category + limit", () => {
+    const result = SearchArgsSchema.safeParse({
+      query: "missions",
+      category: "missions",
       limit: 10,
-      offset: 5,
-      source: "github",
-      include_paths: false,
     });
     expect(result.success).toBe(true);
     if (result.success) {
+      expect(result.data.query).toBe("missions");
+      expect(result.data.category).toBe("missions");
       expect(result.data.limit).toBe(10);
-      expect(result.data.offset).toBe(5);
-      expect(result.data.source).toBe("github");
-      expect(result.data.include_paths).toBe(false);
     }
   });
 
-  it("rejects empty query", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "" });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects missing query", () => {
-    const result = SearchNetworkArgsSchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-
   it("rejects limit > 50", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "test", limit: 100 });
+    const result = SearchArgsSchema.safeParse({ limit: 100 });
     expect(result.success).toBe(false);
   });
 
   it("rejects limit < 1", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "test", limit: 0 });
+    const result = SearchArgsSchema.safeParse({ limit: 0 });
     expect(result.success).toBe(false);
   });
 
-  it("rejects negative offset", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "test", offset: -1 });
+  it("rejects non-integer limit", () => {
+    const result = SearchArgsSchema.safeParse({ limit: 12.5 });
     expect(result.success).toBe(false);
-  });
-
-  it("rejects invalid source", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "test", source: "twitter" });
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts linkedin source", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "test", source: "linkedin" });
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts a sort directive", () => {
-    const result = SearchNetworkArgsSchema.safeParse({ query: "test", sort: "name:asc" });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.sort).toBe("name:asc");
   });
 });
 
-describe("MCP Input Validation — GetConnectionPathArgs", () => {
-  it("accepts a natural-language query (we'll resolve via search)", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ query: "Sarah Chen" });
+describe("MCP Input Validation — ExecuteArgs", () => {
+  it("accepts a capability name with no args", () => {
+    const result = ExecuteArgsSchema.safeParse({ capability: "list_missions" });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.query).toBe("Sarah Chen");
+    if (result.success) {
+      expect(result.data.capability).toBe("list_missions");
+      expect(result.data.args).toBeUndefined();
+    }
   });
 
-  it("accepts an explicit github_user_id target without a query", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ github_user_id: 12345 });
+  it("accepts a capability name with an args object", () => {
+    const result = ExecuteArgsSchema.safeParse({
+      capability: "get_person_dossier",
+      args: { github_user_id: 12345 },
+    });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.args).toEqual({ github_user_id: 12345 });
+    }
   });
 
-  it("accepts an explicit linkedin_username target without a query", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({ linkedin_username: "sarah-chen" });
-    expect(result.success).toBe(true);
+  it("rejects missing capability", () => {
+    const result = ExecuteArgsSchema.safeParse({});
+    expect(result.success).toBe(false);
   });
 
-  it("rejects when neither query nor explicit target is provided", () => {
-    const result = GetConnectionPathArgsSchema.safeParse({});
+  it("rejects empty capability", () => {
+    const result = ExecuteArgsSchema.safeParse({ capability: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects args that is not an object", () => {
+    const result = ExecuteArgsSchema.safeParse({
+      capability: "list_missions",
+      args: "not-an-object",
+    });
     expect(result.success).toBe(false);
   });
 });

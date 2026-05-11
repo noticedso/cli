@@ -2,13 +2,17 @@
  * MCP (Model Context Protocol) server for noticed.
  *
  * Implements the MCP specification over stdio (JSON-RPC 2.0, newline-delimited).
- * Exposes noticed search capabilities as tools that AI agents can call.
+ * Exposes two meta-tools (`search` + `execute`) backed by the same capability
+ * registry that powers the noticed web and Telegram agents. A nine-name
+ * server-side denylist filters chat-only capabilities (message, referrals,
+ * cursor-cloud, etc.) so MCP/CLI clients only see capabilities that work
+ * outside a chat context.
  *
  * Specification: https://modelcontextprotocol.io/specification
  *
  * Tools provided:
- *   - search_network: Search developers in the user's network
- *   - get_connection_path: Find the shortest path between users
+ *   - search: Discover capabilities by query/category, returns names + schemas
+ *   - execute: Run a named capability with arguments
  *
  * Usage:
  *   noticed mcp                     # Start server (stdio)
@@ -16,7 +20,7 @@
  */
 
 import { z } from "zod";
-import { createClientFromEnv, type SearchResponse, type ConnectionPath } from "./api-client.js";
+import { createClientFromEnv } from "./api-client.js";
 import { VERSION } from "./version.js";
 import * as readline from "node:readline";
 
@@ -24,25 +28,16 @@ import * as readline from "node:readline";
 // Zod schemas for tool input validation (single source of truth)
 // ---------------------------------------------------------------------------
 
-export const SearchNetworkArgsSchema = z.object({
-  query: z.string().min(1, "query is required and must be non-empty"),
-  limit: z.number().int().min(1).max(50).default(25),
-  offset: z.number().int().min(0).default(0),
-  source: z.enum(["github", "linkedin"]).optional(),
-  sort: z.string().optional(),
-  include_paths: z.boolean().default(true),
+export const SearchArgsSchema = z.object({
+  query: z.string().optional(),
+  category: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(50),
 });
 
-export const GetConnectionPathArgsSchema = z
-  .object({
-    query: z.string().min(1).optional(),
-    github_user_id: z.number().int().positive().optional(),
-    linkedin_username: z.string().min(1).optional(),
-  })
-  .refine(
-    (v) => !!(v.query || v.github_user_id || v.linkedin_username),
-    { message: "Provide query, github_user_id, or linkedin_username" },
-  );
+export const ExecuteArgsSchema = z.object({
+  capability: z.string().min(1, "capability is required"),
+  args: z.record(z.unknown()).optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,77 +76,53 @@ const SERVER_CAPABILITIES = {
 
 const TOOLS = [
   {
-    name: "search_network",
+    name: "search",
     description:
-      "Search the user's developer network across GitHub collaborators and LinkedIn connections. " +
-      "Supports natural language queries: names, companies, skills, topics, job titles. " +
-      "Returns matching profiles with source attribution and connection paths showing how the user is connected to each result.",
+      "Discover noticed capabilities by keyword and optional category. Returns names, descriptions, categories, and JSON parameter schemas. Call with no arguments to list everything. This is the source of truth for which capabilities exist — do not assume a fixed list.",
     inputSchema: {
       type: "object" as const,
       properties: {
         query: {
           type: "string",
           description:
-            "Search query — a name, company, skill, topic, or natural language description (e.g., 'AI engineers at Google', 'react developers', 'sarahml')",
+            "Optional keyword to filter capabilities by name, description, or category.",
+        },
+        category: {
+          type: "string",
+          description:
+            "Optional exact category: search, memory, scheduling, workspace, onboarding, missions, sessions, prm, network, custom.",
         },
         limit: {
           type: "number",
-          description: "Maximum number of results to return (1-50, default 25)",
+          description:
+            "Maximum results (1-50, default 50 — returns the full chat-safe registry for an unfiltered call).",
           minimum: 1,
           maximum: 50,
-          default: 25,
-        },
-        offset: {
-          type: "number",
-          description: "Pagination offset (default 0)",
-          minimum: 0,
-          default: 0,
-        },
-        source: {
-          type: "string",
-          enum: ["github", "linkedin"],
-          description: "Filter results by source (omit for all sources)",
-        },
-        sort: {
-          type: "string",
-          description:
-            "Sort directive in the form 'column:direction' (e.g. 'name:asc', 'company:desc')",
-        },
-        include_paths: {
-          type: "boolean",
-          description:
-            "Include connection paths showing how you're connected to each result (default true)",
-          default: true,
+          default: 50,
         },
       },
-      required: ["query"],
       additionalProperties: false,
     },
   },
   {
-    name: "get_connection_path",
+    name: "execute",
     description:
-      "Find the shortest connection path from the current user to a target person. " +
-      "Provide either a natural-language `query` (we search and use the top match) " +
-      "or an explicit `github_user_id` / `linkedin_username`. " +
-      "Returns the path chain with profiles at each hop and the edge type (GitHub collab or LinkedIn connection).",
+      "Run a capability by exact name. Use `search` first to find the name and required arguments. Pass capability arguments in the `args` object (e.g. args: { mission_id: '...' }).",
     inputSchema: {
       type: "object" as const,
       properties: {
-        query: {
+        capability: {
           type: "string",
+          description: "Capability name from search results.",
+        },
+        args: {
+          type: "object",
           description:
-            "Name or identifier of the person to find a path to (e.g., 'Sarah Chen', '@sarahml', 'CTO at Vercel')",
-        },
-        github_user_id: {
-          type: "number",
-          description: "Numeric GitHub user id of the target (preferred when known)",
-        },
-        linkedin_username: {
-          type: "string",
-          description: "LinkedIn vanity username of the target",
+            "Arguments object matching the capability's parameter schema.",
+          additionalProperties: true,
         },
       },
+      required: ["capability"],
       additionalProperties: false,
     },
   },
@@ -317,11 +288,11 @@ async function handleToolCall(
 
   try {
     switch (toolName) {
-      case "search_network":
-        return await handleSearchNetwork(id, rawArgs);
+      case "search":
+        return await handleSearch(id, rawArgs);
 
-      case "get_connection_path":
-        return await handleGetConnectionPath(id, rawArgs);
+      case "execute":
+        return await handleExecute(id, rawArgs);
 
       default:
         // JSON-RPC 2.0 §5.1: Invalid params (unknown tool)
@@ -344,14 +315,15 @@ async function handleToolCall(
   }
 }
 
-async function handleSearchNetwork(
+async function handleSearch(
   id: string | number | null,
   rawArgs: Record<string, unknown>,
 ): Promise<JsonRpcResponse> {
-  // Validate input against Zod schema
-  const parsed = SearchNetworkArgsSchema.safeParse(rawArgs);
+  const parsed = SearchArgsSchema.safeParse(rawArgs);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    const issues = parsed.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
     return {
       jsonrpc: "2.0",
       id,
@@ -362,86 +334,26 @@ async function handleSearchNetwork(
     };
   }
 
-  const args = parsed.data;
   const client = createClientFromEnv();
-  const result: SearchResponse = await client.search(args.query, {
-    limit: args.limit,
-    offset: args.offset,
-    sort: args.sort,
-    source: args.source,
-    paths: false,
-  });
-
-  // Filter by source if specified
-  let hits = result.hits;
-  if (args.source) {
-    hits = hits.filter((h) => h.source === args.source);
-  }
-
-  // Per-row paths in parallel (the search route returns no embedded paths;
-  // we mirror the web UI's lazy /api/search/path lookup).
-  const PATH_FETCH_LIMIT = 5;
-  const paths: ConnectionPath[] = args.include_paths
-    ? (
-        await Promise.all(
-          hits.slice(0, PATH_FETCH_LIMIT).map((h) =>
-            client
-              .path({ to: h.github_user_id, li: h.connection_linkedin_username })
-              .catch(() => null),
-          ),
-        )
-      ).filter((p): p is ConnectionPath => p != null)
-    : [];
-
-  // Format as readable text for the agent
-  const lines: string[] = [];
-  lines.push(`Found ${hits.length} result${hits.length !== 1 ? "s" : ""} for "${args.query}"`);
-  if (result.hasMore) lines.push("(more results available with pagination)");
-  lines.push("");
-
-  for (const hit of hits) {
-    const name = [hit.connection_first_name, hit.connection_last_name]
-      .filter(Boolean)
-      .join(" ");
-    const login = hit.github_login ? `@${hit.github_login}` : "";
-    const display = name ? `${name}${login ? ` (${login})` : ""}` : login || "Unknown";
-
-    lines.push(`• ${display}`);
-    if (hit.connection_company) lines.push(`  Company: ${hit.connection_company}`);
-    if (hit.profile_headline) lines.push(`  Headline: ${hit.profile_headline}`);
-    lines.push(`  Source: ${hit.source} | Matched on: ${hit.matched_on}`);
-    const skills = [...hit.profile_skills, ...hit.topics].slice(0, 5);
-    if (skills.length > 0) lines.push(`  Skills: ${skills.join(", ")}`);
-    lines.push("");
-  }
-
-  if (paths.length > 0) {
-    lines.push("Connection Paths:");
-    for (const path of paths) {
-      lines.push(formatPathText(path));
-    }
-  }
-
+  const body = await client.capabilitySearch(parsed.data);
   return {
     jsonrpc: "2.0",
     id,
     result: {
-      content: [
-        { type: "text", text: lines.join("\n") },
-        { type: "text", text: JSON.stringify({ hits, paths, hasMore: result.hasMore }) },
-      ],
+      content: [{ type: "text", text: JSON.stringify(body) }],
     },
   };
 }
 
-async function handleGetConnectionPath(
+async function handleExecute(
   id: string | number | null,
   rawArgs: Record<string, unknown>,
 ): Promise<JsonRpcResponse> {
-  // Validate input against Zod schema
-  const parsed = GetConnectionPathArgsSchema.safeParse(rawArgs);
+  const parsed = ExecuteArgsSchema.safeParse(rawArgs);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    const issues = parsed.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
     return {
       jsonrpc: "2.0",
       id,
@@ -452,67 +364,16 @@ async function handleGetConnectionPath(
     };
   }
 
-  const args = parsed.data;
   const client = createClientFromEnv();
-
-  // Resolve {to, li} from the supplied target. If only `query` was given,
-  // search and use the best match.
-  let to: number | null = args.github_user_id ?? null;
-  let li: string | null = args.linkedin_username ?? null;
-  let label = args.query ?? (to ? `#${to}` : (li ? `@${li}` : "target"));
-
-  if (!to && !li) {
-    const search = await client.search(args.query!, { limit: 5, paths: false });
-    const candidates = search.hits.filter(
-      (h) => h.github_user_id || h.connection_linkedin_username,
-    );
-    if (candidates.length === 0) {
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [
-            { type: "text", text: `No matching profiles found for "${args.query}".` },
-          ],
-        },
-      };
-    }
-    const best = candidates[0]!;
-    to = best.github_user_id;
-    li = best.connection_linkedin_username;
-    const bestName =
-      [best.connection_first_name, best.connection_last_name].filter(Boolean).join(" ") ||
-      best.github_login ||
-      best.connection_linkedin_username ||
-      label;
-    label = bestName;
-  }
-
-  const path = await client.path({ to, li });
-
-  if (!path) {
-    return {
-      jsonrpc: "2.0",
-      id,
-      result: {
-        content: [
-          {
-            type: "text",
-            text: `No connection path found to ${label}. They may be outside your reachable network.`,
-          },
-        ],
-      },
-    };
-  }
-
+  const body = await client.capabilityExecute({
+    capability: parsed.data.capability,
+    args: parsed.data.args ?? {},
+  });
   return {
     jsonrpc: "2.0",
     id,
     result: {
-      content: [
-        { type: "text", text: `Connection path to ${label}:\n${formatPathText(path)}` },
-        { type: "text", text: JSON.stringify({ path }) },
-      ],
+      content: [{ type: "text", text: JSON.stringify(body) }],
     },
   };
 }
@@ -520,24 +381,6 @@ async function handleGetConnectionPath(
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
-
-function formatPathText(path: ConnectionPath): string {
-  const profileMap = new Map(
-    path.profiles.map((p) => [p.github_user_id, p]),
-  );
-
-  const startProfile = profileMap.get(path.from_user_id);
-  const parts: string[] = [startProfile?.name ?? startProfile?.login ?? "You"];
-
-  for (const hop of path.hops) {
-    const profile = profileMap.get(hop.to_user_id);
-    const name = profile?.name ?? profile?.login ?? `#${hop.to_user_id}`;
-    const edge = hop.edge_type === "linkedin" ? "──LinkedIn──▸" : "──collab──▸";
-    parts.push(`${edge} ${name}`);
-  }
-
-  return `  ${parts.join(" ")} (${path.total_hops} hop${path.total_hops !== 1 ? "s" : ""})`;
-}
 
 function sendResponse(response: JsonRpcResponse): void {
   const json = JSON.stringify(response);
