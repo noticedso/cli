@@ -179,6 +179,53 @@ export class NoticedApiClient {
     return parsed.path;
   }
 
+  /**
+   * Bridge to the agent's capability registry. `search` returns chat-safe
+   * capabilities (with their parameter schemas) matching an optional query.
+   * The 55-capability surface is the same one the web and Telegram noticed
+   * agents dispatch through; nine chat-only capabilities are filtered server-side.
+   */
+  async capabilitySearch(args: {
+    query?: string;
+    category?: string;
+    limit?: number;
+  }): Promise<unknown> {
+    return this.postJson("/api/agent/capabilities/search", args);
+  }
+
+  /**
+   * Invoke a capability by exact name. Use `capabilitySearch` first to find
+   * the name and required arguments. Errors are surfaced as HTTP 200 bodies
+   * with an `error` field (e.g. `unavailable_from_mcp`, `unknown_capability`,
+   * `validation_failed`, `execution_failed`) per the MCP error-channel
+   * convention.
+   */
+  async capabilityExecute(args: {
+    capability: string;
+    args?: Record<string, unknown>;
+  }): Promise<unknown> {
+    return this.postJson("/api/agent/capabilities/execute", args);
+  }
+
+  private async postJson(path: string, body: unknown): Promise<unknown> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `API error ${res.status}: ${res.statusText}${text ? ` — ${text}` : ""}`,
+      );
+    }
+    return res.json();
+  }
+
   async hydrate(hits: SearchHit[]): Promise<SearchHit[]> {
     const url = new URL(`${this.baseUrl}/api/search/hydrate`);
     const res = await fetch(url.toString(), {

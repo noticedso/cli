@@ -244,3 +244,74 @@ describe("NoticedApiClient.path", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("NoticedApiClient.capabilitySearch / capabilityExecute", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function makeClient(): NoticedApiClient {
+    return new NoticedApiClient({
+      baseUrl: "https://noticed.so",
+      apiKey: "nk_live_test",
+    });
+  }
+
+  it("POSTs capabilitySearch to /api/agent/capabilities/search with bearer", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] }),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = makeClient();
+    await client.capabilitySearch({ query: "missions", limit: 5 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("https://noticed.so/api/agent/capabilities/search");
+    const i = init as RequestInit;
+    expect(i.method).toBe("POST");
+    expect((i.headers as Record<string, string>).Authorization).toBe(
+      "Bearer nk_live_test",
+    );
+    expect((i.headers as Record<string, string>)["Content-Type"]).toBe(
+      "application/json",
+    );
+    expect(JSON.parse(String(i.body))).toEqual({ query: "missions", limit: 5 });
+  });
+
+  it("POSTs capabilityExecute to /api/agent/capabilities/execute", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { ok: true } }),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = makeClient();
+    await client.capabilityExecute({
+      capability: "list_missions",
+      args: {},
+    });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("https://noticed.so/api/agent/capabilities/execute");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      capability: "list_missions",
+      args: {},
+    });
+  });
+
+  it("throws on non-2xx response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "{\"error\":\"Unauthorized\"}",
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = makeClient();
+    await expect(client.capabilitySearch({})).rejects.toThrow(/401/);
+  });
+});

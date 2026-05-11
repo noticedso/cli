@@ -17,7 +17,11 @@ noticed path @sarahml
 
 ## Add to your AI coding agent
 
-The MCP server exposes two tools — `search_network` and `get_connection_path` — to any client that speaks Model Context Protocol. Pick your client below.
+The MCP server exposes two meta-tools — **`search`** and **`execute`** — backed by ~50 noticed capabilities: developer-network search and connection paths, mission and goal tracking, a PRM (people-relationship-management) board, a virtual filesystem for agent workspace files, persistent memory, web search, scheduled crons, and more. Same surface the noticed web and Telegram agents use. Chat-only capabilities (in-chat messaging, referral invites, the Cursor Cloud bridge) are filtered server-side.
+
+> Upgrading from 0.2.x? The tool surface changed: clients that called `search_network` / `get_connection_path` directly should now call `search` (to discover the capability) followed by `execute { capability: "search_network", args: { query: "…" } }`. MCP-aware LLMs handle this discovery automatically.
+
+Pick your client below.
 
 ### Claude Code
 
