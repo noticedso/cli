@@ -69,7 +69,6 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
       "command": "npx",
       "args": ["-y", "@noticed/cli", "mcp"],
       "env": {
-        "NOTICED_API_URL": "https://your-instance.noticed.so",
         "NOTICED_API_KEY": "nk_live_…"
       }
     }
@@ -87,7 +86,7 @@ Edit `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
     "noticed": {
       "command": "npx",
       "args": ["-y", "@noticed/cli", "mcp"],
-      "env": { "NOTICED_API_URL": "https://your-instance.noticed.so", "NOTICED_API_KEY": "nk_live_…" }
+      "env": { "NOTICED_API_KEY": "nk_live_…" }
     }
   }
 }
@@ -104,7 +103,7 @@ Edit `.vscode/mcp.json` for workspace, or run **MCP: Open User Configuration** f
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@noticed/cli", "mcp"],
-      "env": { "NOTICED_API_URL": "https://your-instance.noticed.so", "NOTICED_API_KEY": "nk_live_…" }
+      "env": { "NOTICED_API_KEY": "nk_live_…" }
     }
   }
 }
@@ -122,7 +121,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
     "noticed": {
       "command": "npx",
       "args": ["-y", "@noticed/cli", "mcp"],
-      "env": { "NOTICED_API_URL": "https://your-instance.noticed.so", "NOTICED_API_KEY": "nk_live_…" }
+      "env": { "NOTICED_API_KEY": "nk_live_…" }
     }
   }
 }
@@ -138,7 +137,7 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
     "noticed": {
       "command": "npx",
       "args": ["-y", "@noticed/cli", "mcp"],
-      "env": { "NOTICED_API_URL": "https://your-instance.noticed.so", "NOTICED_API_KEY": "nk_live_…" }
+      "env": { "NOTICED_API_KEY": "nk_live_…" }
     }
   }
 }
@@ -154,7 +153,6 @@ mcpServers:
     command: npx
     args: ["-y", "@noticed/cli", "mcp"]
     env:
-      NOTICED_API_URL: https://your-instance.noticed.so
       NOTICED_API_KEY: nk_live_…
 ```
 
@@ -168,7 +166,7 @@ Edit `~/.config/zed/settings.json` (note: key is `context_servers`, not `mcpServ
     "noticed": {
       "command": "npx",
       "args": ["-y", "@noticed/cli", "mcp"],
-      "env": { "NOTICED_API_URL": "https://your-instance.noticed.so", "NOTICED_API_KEY": "nk_live_…" }
+      "env": { "NOTICED_API_KEY": "nk_live_…" }
     }
   }
 }
@@ -202,9 +200,8 @@ git clone https://github.com/noticedso/cli ~/.claude/plugins/noticed
 ## Quick start (CLI)
 
 ```bash
-# 1. Mint an API key in your noticed dashboard at /dashboard/api-keys
+# 1. Mint an API key at https://www.noticed.so/dashboard/api-keys
 # 2. Configure credentials
-noticed config --set-url https://your-instance.noticed.so
 noticed config --set-key nk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # 3. Search your network
@@ -298,8 +295,8 @@ noticed completion fish > ~/.config/fish/completions/noticed.fish
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `NOTICED_API_URL` | Base URL of your noticed instance | yes |
-| `NOTICED_API_KEY` | API key for authentication | yes |
+| `NOTICED_API_KEY` | API key minted at https://www.noticed.so/dashboard/api-keys | yes |
+| `NOTICED_API_URL` | Override the noticed instance URL. Defaults to `https://www.noticed.so` — only set this if you self-host | no |
 | `NOTICED_BASE_URL` | Alias for `NOTICED_API_URL` | no |
 
 Precedence: CLI flags > environment variables > config file.
@@ -355,7 +352,7 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":2}' | noticed mcp
 import { NoticedApiClient } from "@noticed/cli";
 
 const client = new NoticedApiClient({
-  baseUrl: "https://your-instance.noticed.so",
+  baseUrl: "https://www.noticed.so",
   apiKey: "nk_live_…",
 });
 
@@ -376,6 +373,22 @@ npm test
 npm run lint
 npm run check-types
 ```
+
+---
+
+## Self-hosting noticed
+
+The CLI defaults to the hosted noticed instance at `https://www.noticed.so`. Self-hosting noticed itself is possible but operationally heavy — the value depends on a pre-ingested GitHub + LinkedIn collaboration graph (hundreds of GiB of ClickHouse data, daily GHArchive ingestion, paid LinkedIn API access, OpenAI + Anthropic keys, NextAuth OAuth apps). Most users want the hosted service.
+
+If you do run your own instance, set `NOTICED_API_URL` to its URL — everything else works the same:
+
+```bash
+export NOTICED_API_URL=https://noticed.your-domain.com
+export NOTICED_API_KEY=nk_live_…
+noticed search "AI engineers"
+```
+
+The source for the hosted service lives at https://github.com/noticedso/noticed.
 
 ---
 

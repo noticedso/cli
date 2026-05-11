@@ -247,20 +247,28 @@ export class NoticedApiClient {
 // Config helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * The canonical hosted noticed instance. Self-hosting noticed is technically
+ * possible but operationally unrealistic — the value depends on a pre-ingested
+ * GHArchive + LinkedIn graph that takes weeks to build. Defaulting to the
+ * hosted service is the right tradeoff for ~100% of users.
+ *
+ * Self-hosters can still override by setting NOTICED_API_URL or
+ * NOTICED_BASE_URL explicitly.
+ */
+const DEFAULT_BASE_URL = "https://www.noticed.so";
+
 export function createClientFromEnv(): NoticedApiClient {
-  const baseUrl = process.env["NOTICED_API_URL"] ?? process.env["NOTICED_BASE_URL"];
+  const baseUrl =
+    process.env["NOTICED_API_URL"] ??
+    process.env["NOTICED_BASE_URL"] ??
+    DEFAULT_BASE_URL;
   const apiKey = process.env["NOTICED_API_KEY"];
 
-  if (!baseUrl) {
-    throw new Error(
-      "Missing NOTICED_API_URL or NOTICED_BASE_URL environment variable.\n" +
-        "Set it to the URL of your noticed instance (e.g. https://noticed.so).",
-    );
-  }
   if (!apiKey) {
     throw new Error(
       "Missing NOTICED_API_KEY environment variable.\n" +
-        "Create an API key in your noticed dashboard.",
+        "Mint an API key at https://www.noticed.so/dashboard/api-keys.",
     );
   }
 
