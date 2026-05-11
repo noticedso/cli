@@ -21,9 +21,36 @@ The MCP server exposes two meta-tools — **`search`** and **`execute`** — bac
 
 > Upgrading from 0.2.x? The tool surface changed: clients that called `search_network` / `get_connection_path` directly should now call `search` (to discover the capability) followed by `execute { capability: "search_network", args: { query: "…" } }`. MCP-aware LLMs handle this discovery automatically.
 
-Pick your client below.
+You have two ways to connect: **hosted** (no install, Streamable HTTP) or **stdio** (this package via `npx`). The hosted server runs your queries against `noticed.so` so anyone with a noticed account can use it. The stdio server is useful when your MCP client can't speak HTTP, or when you're running a self-hosted noticed instance.
 
-### Claude Code
+### Hosted MCP server (recommended — no install)
+
+Point any MCP client that supports Streamable HTTP at `https://mcp.noticed.so/api/mcp` with your noticed API key as a Bearer header. Mint a key at [noticed.so/dashboard/api-keys](https://noticed.so/dashboard/api-keys).
+
+**Claude Code** (one command):
+
+```bash
+claude mcp add --transport http --scope user noticed https://mcp.noticed.so/api/mcp --header "Authorization: Bearer nk_live_…"
+```
+
+**Cursor, Claude Desktop, Zed, VS Code Copilot, Windsurf, Cline** — all support URL + header config. Drop the `command/args/env` block from any of the stdio snippets below and replace with:
+
+```json
+{
+  "mcpServers": {
+    "noticed": {
+      "url": "https://mcp.noticed.so/api/mcp",
+      "headers": { "Authorization": "Bearer nk_live_…" }
+    }
+  }
+}
+```
+
+### Stdio MCP server (this package)
+
+Pick your client below for the stdio install.
+
+#### Claude Code
 
 ```bash
 claude mcp add --scope project noticed -- npx -y @noticed/cli mcp
@@ -31,7 +58,7 @@ claude mcp add --scope project noticed -- npx -y @noticed/cli mcp
 
 `--scope project` writes to `.mcp.json` at your repo root so the server is shared with everyone on the team. Drop the flag for a personal-scope install.
 
-### Claude Desktop
+#### Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
@@ -50,7 +77,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 }
 ```
 
-### Cursor
+#### Cursor
 
 Edit `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
 
@@ -66,7 +93,7 @@ Edit `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
 }
 ```
 
-### VS Code (Copilot Chat, GitHub Copilot agent mode)
+#### VS Code (Copilot Chat, GitHub Copilot agent mode)
 
 Edit `.vscode/mcp.json` for workspace, or run **MCP: Open User Configuration** for global:
 
@@ -85,7 +112,7 @@ Edit `.vscode/mcp.json` for workspace, or run **MCP: Open User Configuration** f
 
 Note VS Code uses `servers` (not `mcpServers`) and requires `type`.
 
-### Windsurf
+#### Windsurf
 
 Edit `~/.codeium/windsurf/mcp_config.json`:
 
@@ -101,7 +128,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 }
 ```
 
-### Cline (VS Code)
+#### Cline (VS Code)
 
 Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`:
 
@@ -117,7 +144,7 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
 }
 ```
 
-### Continue
+#### Continue
 
 MCP works in **agent mode** only. Add `.continue/mcpServers/noticed.yaml`:
 
@@ -131,7 +158,7 @@ mcpServers:
       NOTICED_API_KEY: nk_live_…
 ```
 
-### Zed
+#### Zed
 
 Edit `~/.config/zed/settings.json` (note: key is `context_servers`, not `mcpServers`):
 
@@ -281,18 +308,39 @@ Precedence: CLI flags > environment variables > config file.
 
 ## MCP tools
 
+The MCP server exposes exactly two tools — both meta-tools that bridge to the noticed agent's capability registry. The client's LLM uses `search` to discover capabilities at runtime, then calls `execute` by name.
+
 | Tool | Description |
 |------|-------------|
-| `search_network` | Search developers by name, company, skill, or topic. Optional `source`, `sort`, `limit`, `offset`, `include_paths`. |
-| `get_connection_path` | Find the shortest path to a target person. Accepts a natural-language `query`, an explicit `github_user_id`, or a `linkedin_username`. |
+| `search` | Discover noticed capabilities by keyword and optional category. Returns names, descriptions, categories, and JSON parameter schemas. Call with no arguments to list everything. |
+| `execute` | Run a capability by exact name. Pass capability arguments in the `args` object. |
+
+Example client-side flow:
+
+```jsonc
+// 1. Find the right capability
+tools/call search { "query": "missions" }
+// → returns [{ name: "list_missions", parameters: {…}, … }, …]
+
+// 2. Run it
+tools/call execute { "capability": "list_missions", "args": {} }
+// → returns the user's missions
+```
+
+The ~50 chat-safe capabilities cover developer-network search (`search_network`, `get_connection_path`, `my_profile`, `my_network`, `my_activity`, …), missions/goals/milestones, PRM (people / interactions / stages), virtual filesystem and persona files, persistent memory, web search and fetch, and cron scheduling. Nine chat-only capabilities (in-chat messaging, referral invites, Cursor Cloud agents) are filtered server-side.
 
 Test with the MCP Inspector:
 
 ```bash
+# stdio
 npx @modelcontextprotocol/inspector npx @noticed/cli mcp
+
+# hosted (Streamable HTTP) — set Authorization: Bearer <key> in the inspector UI
+npx @modelcontextprotocol/inspector
+# URL: https://mcp.noticed.so/api/mcp
 ```
 
-Or by hand:
+Or by hand against the stdio server:
 
 ```bash
 echo '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | noticed mcp
