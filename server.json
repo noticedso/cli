@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.noticedso/cli",
   "description": "Search your developer network and trace connection paths via GitHub & LinkedIn.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "repository": {
     "url": "https://github.com/noticedso/cli",
     "source": "github"
@@ -11,7 +11,7 @@
     {
       "registryType": "npm",
       "identifier": "@noticed/cli",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "transport": { "type": "stdio" },
       "runtimeHint": "npx",
       "runtimeArguments": [
@@ -23,8 +23,8 @@
       "environmentVariables": [
         {
           "name": "NOTICED_API_URL",
-          "description": "Base URL of your noticed instance (e.g. https://noticed.so)",
-          "isRequired": true
+          "description": "Base URL of the noticed instance. Defaults to https://www.noticed.so — only set this if you self-host noticed.",
+          "isRequired": false
         },
         {
           "name": "NOTICED_API_KEY",
