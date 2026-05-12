@@ -25,7 +25,17 @@ You have two ways to connect: **hosted** (no install, Streamable HTTP) or **stdi
 
 ### Hosted MCP server (recommended — no install)
 
-Point any MCP client that supports Streamable HTTP at `https://mcp.noticed.so/api/mcp` with your noticed API key as a Bearer header. Mint a key at [noticed.so/dashboard/api-keys](https://noticed.so/dashboard/api-keys).
+`https://mcp.noticed.so/api/mcp` is a hosted Streamable HTTP endpoint. Two authentication paths are supported; pick whichever your client prefers.
+
+#### OAuth (claude.ai web, ChatGPT MCP, anything that does OAuth discovery)
+
+The hosted server is a spec-compliant OAuth 2.1 authorization server with Dynamic Client Registration. Clients that follow the [MCP authorization profile](https://modelcontextprotocol.io/specification/draft/basic/authorization) — including claude.ai's custom connectors and ChatGPT's MCP integration — discover the server, register themselves, and walk the user through a consent screen automatically. No API key needed in the client config.
+
+**claude.ai custom connector**: open Settings → Connectors → Add custom connector, paste `https://mcp.noticed.so/api/mcp` as the URL. claude.ai handles the rest. Connected applications are visible (and revocable) at [noticed.so/dashboard/oauth-grants](https://noticed.so/dashboard/oauth-grants).
+
+#### API key Bearer (Claude Code, Cursor, anything that supports a custom header)
+
+For clients that can set an `Authorization: Bearer …` header, mint a key at [noticed.so/dashboard/api-keys](https://noticed.so/dashboard/api-keys) and use it directly — no OAuth flow needed.
 
 **Claude Code** (one command):
 
