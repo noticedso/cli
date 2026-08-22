@@ -77,7 +77,7 @@ describe("portable agent distribution", () => {
     expect(frontmatter).toContain("name: noticed-search");
     expect(frontmatter).toContain("description:");
     expect(frontmatter).toContain("license: MIT");
-    expect(frontmatter).toContain('version: "0.3.2"');
+    expect(frontmatter).toContain(`version: "${packageManifest.version}"`);
     expect(frontmatter).toContain("allowed-tools: Bash(noticed:*)");
     expect(frontmatter).not.toContain("trigger:");
     expect(frontmatter).not.toMatch(/allowed-tools:\n\s+-/);
