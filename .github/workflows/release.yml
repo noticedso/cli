@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # for creating/pushing the version tag
-      id-token: write   # for npm provenance
+      id-token: write   # for npm trusted publishing and provenance
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +78,10 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
+      - name: Install npm with trusted publishing support
+        if: steps.version.outputs.changed == 'true'
+        run: npm install --global npm@11.5.1
+
       - run: npm ci
         if: steps.version.outputs.changed == 'true'
 
@@ -95,8 +99,6 @@ jobs:
 
       - run: npm publish --provenance --access public
         if: steps.version.outputs.changed == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Tag the release
         if: steps.version.outputs.changed == 'true'
