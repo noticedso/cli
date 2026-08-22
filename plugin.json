@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "noticed",
+  "version": "0.3.2",
+  "description": "Search professional networks with noticed through a portable Agent Skill and MCP server.",
+  "author": {
+    "name": "noticed",
+    "url": "https://www.noticed.so"
+  },
+  "homepage": "https://www.noticed.so/developers",
+  "repository": "https://github.com/noticedso/cli",
+  "license": "MIT",
+  "keywords": [
+    "noticed",
+    "relationships",
+    "network-search",
+    "agent-skill",
+    "mcp"
+  ]
+}
