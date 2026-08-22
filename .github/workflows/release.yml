@@ -33,7 +33,7 @@ jobs:
       contents: write   # for creating/pushing the version tag
       id-token: write   # for npm trusted publishing and provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 2  # need previous commit to diff package.json
 
@@ -71,7 +71,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.version.outputs.changed == 'true'
         with:
           node-version: "22"
