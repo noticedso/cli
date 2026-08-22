@@ -4,7 +4,7 @@
     "noticed": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@noticed/cli@0.3.2", "mcp"]
+      "args": ["-y", "@noticed/cli@0.3.3", "mcp"]
     }
   }
 }

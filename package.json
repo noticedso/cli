@@ -1,6 +1,6 @@
 {
   "name": "@noticed/cli",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "CLI and MCP server for noticed — search your developer network, trace connections, find the shortest path to anyone through GitHub and LinkedIn.",
   "keywords": [
     "noticed",

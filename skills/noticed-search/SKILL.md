@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Node.js 20+, network access, and a noticed API key for production data.
 metadata:
   author: noticed
-  version: "0.3.2"
+  version: "0.3.3"
 allowed-tools: Bash(noticed:*)
 ---
 
