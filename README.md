@@ -184,21 +184,27 @@ Edit `~/.config/zed/settings.json` (note: key is `context_servers`, not `mcpServ
 
 ---
 
-## Claude Code skill
+## Agent Skill and plugin
 
-This package ships a Claude Code skill at `skills/noticed-search/SKILL.md`. Skills don't auto-discover from `node_modules` — symlink it into your skills directory once:
+The portable noticed Agent Skill works in Codex, Claude Code, Cursor, and other
+clients supported by the open [skills](https://skills.sh) ecosystem:
 
 ```bash
-# Personal scope (all projects)
-mkdir -p ~/.claude/skills
-ln -s "$(npm root -g)/@noticed/cli/skills/noticed-search" ~/.claude/skills/noticed-search
+# Inspect the skill before installation
+npx skills add noticedso/cli --list
 
-# Project scope (this repo only)
-mkdir -p .claude/skills
-ln -s "$(npm root)/@noticed/cli/skills/noticed-search" .claude/skills/noticed-search
+# Install globally for Codex and Claude Code
+npx skills add noticedso/cli --skill noticed-search -g \
+  --agent codex --agent claude-code -y
 ```
 
-Or install the whole thing as a Claude Code **plugin** (skill + MCP bundled):
+The repository is also an Agent Plugins 1.0 package. It carries a portable
+`plugin.json`, `skills/`, and `mcp.json`, plus a Claude Code compatibility
+manifest under `.claude-plugin/`. The MCP definition starts the version-pinned
+stdio server; configure `NOTICED_API_KEY` in the client environment or run
+`noticed config --set-key …` before querying production data.
+
+To install the Claude Code compatibility plugin directly from source:
 
 ```bash
 git clone https://github.com/noticedso/cli ~/.claude/plugins/noticed

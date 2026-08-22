@@ -1,9 +1,12 @@
 ---
 name: noticed-search
-description: Search developer networks using noticed — find people, trace connections, and discover the shortest path to anyone through GitHub collaborations and LinkedIn connections.
-trigger: Use when the user wants to search for developers, find people in their network, trace connections between people, or discover paths through professional networks. Also triggered by mentions of "noticed", "developer search", "network search", "find developers", "connection path", or "who knows".
-allowed-tools:
-  - Bash(noticed:*)
+description: Search developer networks using noticed to find people, trace connections, and discover paths through GitHub collaborations and LinkedIn connections. Use when the user asks to find developers, search a professional network, trace a connection, or learn who knows someone.
+license: MIT
+compatibility: Requires Node.js 20+, network access, and a noticed API key for production data.
+metadata:
+  author: noticed
+  version: "0.3.2"
+allowed-tools: Bash(noticed:*)
 ---
 
 # noticed Search Skill
