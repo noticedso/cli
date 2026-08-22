@@ -20,12 +20,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          # On workflow_run, check out the tag the release was built from so
-          # version sync sees the right state. On workflow_dispatch, default
-          # to whichever ref the user invoked from (usually main).
-          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+      - uses: actions/checkout@v6
 
       - name: Install mcp-publisher
         run: |
