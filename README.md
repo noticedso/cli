@@ -5,7 +5,7 @@
 [![CI](https://github.com/noticedso/cli/actions/workflows/ci.yml/badge.svg)](https://github.com/noticedso/cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-CLI, MCP server, and Claude Code plugin for [noticed](https://noticed.so) — search your developer network, trace connections, and find the shortest path to anyone through GitHub and LinkedIn collaboration graphs.
+CLI, stdio compatibility bridge, and Claude Code plugin for [noticed](https://noticed.so) — search your network, manage relationships, and use the canonical noticed MCP from HTTP or stdio-only clients.
 
 ```bash
 npm install -g @noticed/cli
@@ -17,11 +17,11 @@ noticed path @sarahml
 
 ## Add to your AI coding agent
 
-The MCP server exposes two meta-tools — **`search`** and **`execute`** — backed by ~50 noticed capabilities: developer-network search and connection paths, mission and goal tracking, a PRM (people-relationship-management) board, a virtual filesystem for agent workspace files, persistent memory, web search, scheduled crons, and more. Same surface the noticed web and Telegram agents use. Chat-only capabilities (in-chat messaging, referral invites, the Cursor Cloud bridge) are filtered server-side.
+The canonical MCP exposes every reviewed noticed capability as a direct, typed tool: relationship search and dossiers, missions and goals, people and interactions, lists and views, memory, scheduled work, and more. The hosted server owns the tool registry and schemas so every client sees the same current surface.
 
-> Upgrading from 0.2.x? The tool surface changed: clients that called `search_network` / `get_connection_path` directly should now call `search` (to discover the capability) followed by `execute { capability: "search_network", args: { query: "…" } }`. MCP-aware LLMs handle this discovery automatically.
+> Upgrading from 0.3.x? Restart with `@noticed/cli@0.4.0` or newer. The retired `search` / `execute` meta-tools are replaced by the canonical direct tools returned by `https://mcp.noticed.so/api/mcp`.
 
-You have two ways to connect: **hosted** (no install, Streamable HTTP) or **stdio** (this package via `npx`). The hosted server runs your queries against `noticed.so` so anyone with a noticed account can use it. The stdio server is useful when your MCP client can't speak HTTP, or when you're running a self-hosted noticed instance.
+You have two ways to connect: **hosted** (no install, Streamable HTTP) or **stdio** (this package via `npx`). Both connect to the same server and expose the same direct tools. Use stdio only when your MCP client cannot speak Streamable HTTP.
 
 ### Hosted MCP server (recommended — no install)
 
@@ -56,9 +56,9 @@ claude mcp add --transport http --scope user noticed https://mcp.noticed.so/api/
 }
 ```
 
-### Stdio MCP server (this package)
+### Stdio bridge (this package)
 
-Pick your client below for the stdio install.
+The `noticed mcp` command securely proxies stdio to the canonical hosted MCP. Pick your client below for the stdio install.
 
 #### Claude Code
 
@@ -201,7 +201,7 @@ npx skills add noticedso/cli --skill noticed-search -g \
 The repository is also an Agent Plugins 1.0 package. It carries a portable
 `plugin.json`, `skills/`, and `mcp.json`, plus a Claude Code compatibility
 manifest under `.claude-plugin/`. The MCP definition starts the version-pinned
-stdio server; configure `NOTICED_API_KEY` in the client environment or run
+stdio bridge; configure `NOTICED_API_KEY` in the client environment or run
 `noticed config --set-key …` before querying production data.
 
 To install the Claude Code compatibility plugin directly from source:
@@ -293,8 +293,8 @@ Config is stored at `~/.config/noticed/config.json` (XDG-compliant).
 ### `noticed mcp`
 
 ```bash
-noticed mcp                        # start MCP server over stdio
-noticed mcp --log-level debug      # with debug logging on stderr
+noticed mcp                        # bridge stdio to the canonical hosted MCP
+noticed mcp --log-level debug      # include proxy debug logging on stderr
 ```
 
 ### `noticed completion <shell>`
@@ -312,6 +312,7 @@ noticed completion fish > ~/.config/fish/completions/noticed.fish
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `NOTICED_API_KEY` | API key minted at https://www.noticed.so/dashboard/api-keys | yes |
+| `NOTICED_MCP_URL` | Override the Streamable HTTP MCP endpoint. Defaults to `https://mcp.noticed.so/api/mcp` | no |
 | `NOTICED_API_URL` | Override the noticed instance URL. Defaults to `https://www.noticed.so` — only set this if you self-host | no |
 | `NOTICED_BASE_URL` | Alias for `NOTICED_API_URL` | no |
 
@@ -321,31 +322,12 @@ Precedence: CLI flags > environment variables > config file.
 
 ## MCP tools
 
-The MCP server exposes exactly two tools — both meta-tools that bridge to the noticed agent's capability registry. The client's LLM uses `search` to discover capabilities at runtime, then calls `execute` by name.
-
-| Tool | Description |
-|------|-------------|
-| `search` | Discover noticed capabilities by keyword and optional category. Returns names, descriptions, categories, and JSON parameter schemas. Call with no arguments to list everything. |
-| `execute` | Run a capability by exact name. Pass capability arguments in the `args` object. |
-
-Example client-side flow:
-
-```jsonc
-// 1. Find the right capability
-tools/call search { "query": "missions" }
-// → returns [{ name: "list_missions", parameters: {…}, … }, …]
-
-// 2. Run it
-tools/call execute { "capability": "list_missions", "args": {} }
-// → returns the user's missions
-```
-
-The ~50 chat-safe capabilities cover developer-network search (`search_network`, `get_connection_path`, `my_profile`, `my_network`, `my_activity`, …), missions/goals/milestones, PRM (people / interactions / stages), virtual filesystem and persona files, persistent memory, web search and fetch, and cron scheduling. Nine chat-only capabilities (in-chat messaging, referral invites, Cursor Cloud agents) are filtered server-side.
+The hosted server is the source of truth for the current direct-tool surface. Clients discover ordinary tools such as `search_people`, `get_person`, `network_summary`, mission and goal operations, lists and views, memories, interactions, and schedules through the standard `tools/list` request. The stdio bridge forwards discovery and invocation without maintaining a second registry.
 
 Test with the MCP Inspector:
 
 ```bash
-# stdio
+# stdio bridge to the same hosted server
 npx @modelcontextprotocol/inspector npx @noticed/cli mcp
 
 # hosted (Streamable HTTP) — set Authorization: Bearer <key> in the inspector UI
@@ -353,7 +335,7 @@ npx @modelcontextprotocol/inspector
 # URL: https://mcp.noticed.so/api/mcp
 ```
 
-Or by hand against the stdio server:
+Or by hand against the stdio bridge:
 
 ```bash
 echo '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | noticed mcp
@@ -394,14 +376,15 @@ npm run check-types
 
 ## Self-hosting noticed
 
-The CLI defaults to the hosted noticed instance at `https://www.noticed.so`. Self-hosting noticed itself is possible but operationally heavy — the value depends on a pre-ingested GitHub + LinkedIn collaboration graph (hundreds of GiB of ClickHouse data, daily GHArchive ingestion, paid LinkedIn API access, OpenAI + Anthropic keys, NextAuth OAuth apps). Most users want the hosted service.
+The CLI defaults to the hosted noticed instance at `https://www.noticed.so`. Self-hosting noticed itself is possible but operationally heavier; most users want the hosted service.
 
-If you do run your own instance, set `NOTICED_API_URL` to its URL — everything else works the same:
+If you do run your own instance, set `NOTICED_MCP_URL` to its Streamable HTTP MCP endpoint. For a standard deployment, `NOTICED_API_URL` also works and the CLI derives `/api/mcp`:
 
 ```bash
 export NOTICED_API_URL=https://noticed.your-domain.com
 export NOTICED_API_KEY=nk_live_…
 noticed search "AI engineers"
+noticed mcp
 ```
 
 The source for the hosted service lives at https://github.com/noticedso/noticed.
