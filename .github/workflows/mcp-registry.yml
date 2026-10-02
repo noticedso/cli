@@ -42,4 +42,18 @@ jobs:
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        run: ./mcp-publisher publish
+        run: |
+          # npm can acknowledge a publish before its public registry replicas
+          # serve the new version. The MCP Registry validates npm availability,
+          # so retry this bounded propagation race instead of failing the deploy.
+          for attempt in {1..12}; do
+            if ./mcp-publisher publish; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::MCP Registry publish failed after $attempt attempts."
+              exit 1
+            fi
+            echo "npm version is not visible to the MCP Registry yet; retrying in 10 seconds ($attempt/12)."
+            sleep 10
+          done
