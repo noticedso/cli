@@ -2,10 +2,10 @@
 name: noticed-search
 description: Search developer networks using noticed to find people, trace connections, and discover paths through GitHub collaborations and LinkedIn connections. Use when the user asks to find developers, search a professional network, trace a connection, or learn who knows someone.
 license: MIT
-compatibility: Requires Node.js 20+, network access, and a noticed API key for production data.
+compatibility: Requires Node.js 20.18.1+, network access, and a noticed API key for production data.
 metadata:
   author: noticed
-  version: "0.3.3"
+  version: "0.4.0"
 allowed-tools: Bash(noticed:*)
 ---
 
@@ -69,9 +69,9 @@ noticed config --set-key nk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 noticed config --show
 ```
 
-### MCP Server (for AI agent integration)
+### MCP bridge (for AI agent integration)
 ```bash
-# Start MCP server over stdio
+# Bridge the canonical direct-tool noticed MCP to stdio-only clients
 noticed mcp
 ```
 

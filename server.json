@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.noticedso/cli",
-  "description": "Search your developer network and trace connection paths via GitHub & LinkedIn.",
-  "version": "0.3.3",
+  "description": "Use the canonical noticed direct-tool MCP from stdio-only clients.",
+  "version": "0.4.0",
   "repository": {
     "url": "https://github.com/noticedso/cli",
     "source": "github"
@@ -11,7 +11,7 @@
     {
       "registryType": "npm",
       "identifier": "@noticed/cli",
-      "version": "0.3.3",
+      "version": "0.4.0",
       "transport": { "type": "stdio" },
       "runtimeHint": "npx",
       "runtimeArguments": [
@@ -22,13 +22,18 @@
       ],
       "environmentVariables": [
         {
+          "name": "NOTICED_MCP_URL",
+          "description": "Remote Streamable HTTP MCP endpoint. Defaults to https://mcp.noticed.so/api/mcp.",
+          "isRequired": false
+        },
+        {
           "name": "NOTICED_API_URL",
-          "description": "Base URL of the noticed instance. Defaults to https://www.noticed.so — only set this if you self-host noticed.",
+          "description": "Base URL of a self-hosted noticed instance. The stdio bridge derives /api/mcp unless NOTICED_MCP_URL is set.",
           "isRequired": false
         },
         {
           "name": "NOTICED_API_KEY",
-          "description": "API key minted at /dashboard/api-keys",
+          "description": "API key minted at https://www.noticed.so/dashboard/api-keys",
           "isRequired": true,
           "isSecret": true
         }

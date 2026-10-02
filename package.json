@@ -1,7 +1,7 @@
 {
   "name": "@noticed/cli",
-  "version": "0.3.3",
-  "description": "CLI and MCP server for noticed — search your developer network, trace connections, find the shortest path to anyone through GitHub and LinkedIn.",
+  "version": "0.4.0",
+  "description": "CLI and stdio bridge for the canonical noticed MCP — search your network, manage relationships, and use noticed from AI clients.",
   "keywords": [
     "noticed",
     "cli",
@@ -25,7 +25,7 @@
   "author": "noticed (https://noticed.so)",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.18.1"
   },
   "bin": {
     "noticed": "bin/noticed.js"
@@ -66,6 +66,7 @@
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
     "conf": "^13.1.0",
+    "mcp-remote": "0.14.3",
     "open": "^10.1.0",
     "ora": "^8.2.0",
     "zod": "^3.25.11"

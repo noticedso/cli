@@ -1,416 +1,136 @@
 /**
- * MCP (Model Context Protocol) server for noticed.
+ * Stdio compatibility bridge for the canonical hosted noticed MCP.
  *
- * Implements the MCP specification over stdio (JSON-RPC 2.0, newline-delimited).
- * Exposes two meta-tools (`search` + `execute`) backed by the same capability
- * registry that powers the noticed web and Telegram agents. A nine-name
- * server-side denylist filters chat-only capabilities (message, referrals,
- * cursor-cloud, etc.) so MCP/CLI clients only see capabilities that work
- * outside a chat context.
- *
- * Specification: https://modelcontextprotocol.io/specification
- *
- * Tools provided:
- *   - search: Discover capabilities by query/category, returns names + schemas
- *   - execute: Run a named capability with arguments
- *
- * Usage:
- *   noticed mcp                     # Start server (stdio)
- *   echo '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{...}}' | noticed mcp
+ * The hosted Streamable HTTP server owns the tool registry, schemas, resources,
+ * authentication policy, and version. Keeping the stdio command as a transport
+ * proxy means stdio-only clients receive that same direct-tool surface instead
+ * of a second, stale `search` / `execute` registry.
  */
 
-import { z } from "zod";
-import { createClientFromEnv } from "./api-client.js";
-import { VERSION } from "./version.js";
-import * as readline from "node:readline";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
-// ---------------------------------------------------------------------------
-// Zod schemas for tool input validation (single source of truth)
-// ---------------------------------------------------------------------------
+const DEFAULT_MCP_URL = "https://mcp.noticed.so/api/mcp";
+const AUTH_HEADER_ENV = "NOTICED_MCP_REMOTE_AUTHORIZATION";
 
-export const SearchArgsSchema = z.object({
-  query: z.string().optional(),
-  category: z.string().optional(),
-  limit: z.number().int().min(1).max(50).default(50),
-});
-
-export const ExecuteArgsSchema = z.object({
-  capability: z.string().min(1, "capability is required"),
-  args: z.record(z.unknown()).optional(),
-});
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface JsonRpcRequest {
-  jsonrpc: "2.0";
-  id?: string | number | null;
-  method: string;
-  params?: Record<string, unknown>;
-}
-
-interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface McpServerOptions {
-  logLevel?: "debug" | "info" | "warn" | "error";
+  logLevel?: LogLevel;
 }
 
-// ---------------------------------------------------------------------------
-// MCP Protocol constants
-// ---------------------------------------------------------------------------
+interface McpProxyLaunchOptions extends McpServerOptions {
+  env?: NodeJS.ProcessEnv;
+  proxyEntrypoint?: string;
+}
 
-const SERVER_INFO = {
-  name: "noticed",
-  version: VERSION,
-};
+export interface McpProxyLaunchConfig {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
 
-const SERVER_CAPABILITIES = {
-  tools: {},
-};
+function resolveProxyEntrypoint(): string {
+  const require = createRequire(import.meta.url);
+  const packagePath = require.resolve("mcp-remote/package.json");
+  return join(dirname(packagePath), "dist", "proxy.js");
+}
 
-const TOOLS = [
-  {
-    name: "search",
-    description:
-      "Discover noticed capabilities by keyword and optional category. Returns names, descriptions, categories, and JSON parameter schemas. Call with no arguments to list everything. This is the source of truth for which capabilities exist — do not assume a fixed list.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: {
-          type: "string",
-          description:
-            "Optional keyword to filter capabilities by name, description, or category.",
-        },
-        category: {
-          type: "string",
-          description:
-            "Optional exact category: search, memory, scheduling, workspace, onboarding, missions, sessions, prm, network, custom.",
-        },
-        limit: {
-          type: "number",
-          description:
-            "Maximum results (1-50, default 50 — returns the full chat-safe registry for an unfiltered call).",
-          minimum: 1,
-          maximum: 50,
-          default: 50,
-        },
-      },
-      additionalProperties: false,
+function resolveMcpUrl(env: NodeJS.ProcessEnv): URL {
+  const explicitMcpUrl = env["NOTICED_MCP_URL"]?.trim();
+  if (explicitMcpUrl) return new URL(explicitMcpUrl);
+
+  const selfHostedBaseUrl =
+    env["NOTICED_API_URL"]?.trim() ?? env["NOTICED_BASE_URL"]?.trim();
+  if (selfHostedBaseUrl) {
+    const baseUrl = new URL(selfHostedBaseUrl);
+    if (
+      baseUrl.protocol === "https:" &&
+      (baseUrl.hostname === "noticed.so" ||
+        baseUrl.hostname === "www.noticed.so")
+    ) {
+      return new URL(DEFAULT_MCP_URL);
+    }
+    return new URL("/api/mcp", baseUrl);
+  }
+
+  return new URL(DEFAULT_MCP_URL);
+}
+
+export function buildMcpProxyLaunchConfig(
+  options: McpProxyLaunchOptions = {},
+): McpProxyLaunchConfig {
+  const env = options.env ?? process.env;
+  const apiKey = env["NOTICED_API_KEY"]?.trim();
+  if (!apiKey) {
+    throw new Error(
+      "Missing NOTICED_API_KEY environment variable.\n" +
+        "Mint an API key at https://www.noticed.so/dashboard/api-keys.",
+    );
+  }
+
+  const mcpUrl = resolveMcpUrl(env);
+  if (mcpUrl.protocol !== "https:" && mcpUrl.protocol !== "http:") {
+    throw new Error("NOTICED_MCP_URL must use http or https.");
+  }
+
+  const args = [
+    options.proxyEntrypoint ?? resolveProxyEntrypoint(),
+    mcpUrl.toString(),
+    "--transport",
+    "http-only",
+    "--header",
+    `Authorization:\${${AUTH_HEADER_ENV}}`,
+    "--silent",
+  ];
+
+  if (mcpUrl.protocol === "http:") args.push("--allow-http");
+  if (options.logLevel === "debug") args.push("--debug");
+
+  return {
+    command: process.execPath,
+    args,
+    env: {
+      ...env,
+      [AUTH_HEADER_ENV]: `Bearer ${apiKey}`,
     },
-  },
-  {
-    name: "execute",
-    description:
-      "Run a capability by exact name. Use `search` first to find the name and required arguments. Pass capability arguments in the `args` object (e.g. args: { mission_id: '...' }).",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        capability: {
-          type: "string",
-          description: "Capability name from search results.",
-        },
-        args: {
-          type: "object",
-          description:
-            "Arguments object matching the capability's parameter schema.",
-          additionalProperties: true,
-        },
-      },
-      required: ["capability"],
-      additionalProperties: false,
-    },
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Server
-// ---------------------------------------------------------------------------
+  };
+}
 
 export async function startMcpServer(options?: McpServerOptions): Promise<void> {
-  const logLevel = options?.logLevel ?? "warn";
-  const log = createLogger(logLevel);
-
-  log.info("Starting noticed MCP server...");
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    terminal: false,
+  const launch = buildMcpProxyLaunchConfig(options);
+  const child = spawn(launch.command, launch.args, {
+    env: launch.env,
+    stdio: "inherit",
   });
 
-  let initialized = false;
-
-  rl.on("line", (line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-
-    log.debug(`← ${trimmed}`);
-
-    let request: JsonRpcRequest;
-    try {
-      request = JSON.parse(trimmed) as JsonRpcRequest;
-    } catch {
-      // JSON-RPC 2.0 §5.1: Parse error
-      sendResponse({
-        jsonrpc: "2.0",
-        id: null,
-        error: { code: -32700, message: "Parse error" },
-      });
-      return;
-    }
-
-    if (request.jsonrpc !== "2.0") {
-      // JSON-RPC 2.0 §5.1: Invalid Request
-      sendResponse({
-        jsonrpc: "2.0",
-        id: request.id ?? null,
-        error: { code: -32600, message: "Invalid Request — expected jsonrpc 2.0" },
-      });
-      return;
-    }
-
-    handleRequest(request, initialized, log)
-      .then((response) => {
-        if (request.method === "initialize") initialized = true;
-        if (response) sendResponse(response);
-      })
-      .catch((err) => {
-        log.error(`Handler error: ${err}`);
-        if (request.id != null) {
-          // JSON-RPC 2.0 §5.1: Internal error
-          sendResponse({
-            jsonrpc: "2.0",
-            id: request.id,
-            error: { code: -32603, message: "Internal error", data: String(err) },
-          });
-        }
-      });
-  });
-
-  rl.on("close", () => {
-    log.info("MCP server stdin closed, exiting.");
-    process.exit(0);
-  });
-
-  // Graceful shutdown on signals
-  const shutdown = () => {
-    log.info("Received shutdown signal, exiting.");
-    rl.close();
-    process.exit(0);
+  const forwardSignal = (signal: NodeJS.Signals) => {
+    if (!child.killed) child.kill(signal);
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  const forwardSigint = () => forwardSignal("SIGINT");
+  const forwardSigterm = () => forwardSignal("SIGTERM");
 
-  // Keep process alive
-  process.stdin.resume();
-}
-
-async function handleRequest(
-  request: JsonRpcRequest,
-  initialized: boolean,
-  log: Logger,
-): Promise<JsonRpcResponse | null> {
-  const { method, id, params } = request;
-
-  // Notifications (no id) don't get responses except for errors
-  const isNotification = id === undefined || id === null;
-
-  switch (method) {
-    case "initialize":
-      return {
-        jsonrpc: "2.0",
-        id: id ?? null,
-        result: {
-          protocolVersion: "2024-11-05",
-          capabilities: SERVER_CAPABILITIES,
-          serverInfo: SERVER_INFO,
-        },
-      };
-
-    case "notifications/initialized":
-      log.info("Client initialized.");
-      return null;
-
-    case "ping":
-      return { jsonrpc: "2.0", id: id ?? null, result: {} };
-
-    case "tools/list":
-      if (!initialized) {
-        // MCP spec: -32002 = Server not ready (must call initialize first)
-        return {
-          jsonrpc: "2.0",
-          id: id ?? null,
-          error: { code: -32002, message: "Server not initialized — call initialize first" },
-        };
-      }
-      return {
-        jsonrpc: "2.0",
-        id: id ?? null,
-        result: { tools: TOOLS },
-      };
-
-    case "tools/call":
-      if (!initialized) {
-        // MCP spec: -32002 = Server not ready
-        return {
-          jsonrpc: "2.0",
-          id: id ?? null,
-          error: { code: -32002, message: "Server not initialized — call initialize first" },
-        };
-      }
-      return handleToolCall(id ?? null, params as { name: string; arguments?: Record<string, unknown> }, log);
-
-    default:
-      if (isNotification) return null;
-      // JSON-RPC 2.0 §5.1: Method not found
-      return {
-        jsonrpc: "2.0",
-        id: id ?? null,
-        error: { code: -32601, message: `Method not found: ${method}` },
-      };
-  }
-}
-
-async function handleToolCall(
-  id: string | number | null,
-  params: { name: string; arguments?: Record<string, unknown> },
-  log: Logger,
-): Promise<JsonRpcResponse> {
-  const toolName = params?.name;
-  const rawArgs = params?.arguments ?? {};
-
-  log.debug(`Tool call: ${toolName}(${JSON.stringify(rawArgs)})`);
+  process.prependOnceListener("SIGINT", forwardSigint);
+  process.prependOnceListener("SIGTERM", forwardSigterm);
 
   try {
-    switch (toolName) {
-      case "search":
-        return await handleSearch(id, rawArgs);
-
-      case "execute":
-        return await handleExecute(id, rawArgs);
-
-      default:
-        // JSON-RPC 2.0 §5.1: Invalid params (unknown tool)
-        return {
-          jsonrpc: "2.0",
-          id,
-          error: { code: -32602, message: `Unknown tool: ${toolName}` },
-        };
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      jsonrpc: "2.0",
-      id,
-      result: {
-        content: [{ type: "text", text: `Error: ${message}` }],
-        isError: true,
-      },
-    };
+    await new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code, signal) => {
+        if (code === 0 || signal === "SIGINT" || signal === "SIGTERM") {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            `noticed MCP proxy exited ${signal ? `from ${signal}` : `with code ${code ?? "unknown"}`}`,
+          ),
+        );
+      });
+    });
+  } finally {
+    process.removeListener("SIGINT", forwardSigint);
+    process.removeListener("SIGTERM", forwardSigterm);
   }
-}
-
-async function handleSearch(
-  id: string | number | null,
-  rawArgs: Record<string, unknown>,
-): Promise<JsonRpcResponse> {
-  const parsed = SearchArgsSchema.safeParse(rawArgs);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `${i.path.join(".")}: ${i.message}`)
-      .join("; ");
-    return {
-      jsonrpc: "2.0",
-      id,
-      result: {
-        content: [{ type: "text", text: `Invalid arguments: ${issues}` }],
-        isError: true,
-      },
-    };
-  }
-
-  const client = createClientFromEnv();
-  const body = await client.capabilitySearch(parsed.data);
-  return {
-    jsonrpc: "2.0",
-    id,
-    result: {
-      content: [{ type: "text", text: JSON.stringify(body) }],
-    },
-  };
-}
-
-async function handleExecute(
-  id: string | number | null,
-  rawArgs: Record<string, unknown>,
-): Promise<JsonRpcResponse> {
-  const parsed = ExecuteArgsSchema.safeParse(rawArgs);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `${i.path.join(".")}: ${i.message}`)
-      .join("; ");
-    return {
-      jsonrpc: "2.0",
-      id,
-      result: {
-        content: [{ type: "text", text: `Invalid arguments: ${issues}` }],
-        isError: true,
-      },
-    };
-  }
-
-  const client = createClientFromEnv();
-  const body = await client.capabilityExecute({
-    capability: parsed.data.capability,
-    args: parsed.data.args ?? {},
-  });
-  return {
-    jsonrpc: "2.0",
-    id,
-    result: {
-      content: [{ type: "text", text: JSON.stringify(body) }],
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-function sendResponse(response: JsonRpcResponse): void {
-  const json = JSON.stringify(response);
-  process.stdout.write(json + "\n");
-}
-
-// ---------------------------------------------------------------------------
-// Logger
-// ---------------------------------------------------------------------------
-
-interface Logger {
-  debug: (msg: string) => void;
-  info: (msg: string) => void;
-  warn: (msg: string) => void;
-  error: (msg: string) => void;
-}
-
-const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
-
-function createLogger(level: keyof typeof LOG_LEVELS): Logger {
-  const threshold = LOG_LEVELS[level];
-  const emit = (lvl: keyof typeof LOG_LEVELS, msg: string) => {
-    if (LOG_LEVELS[lvl] >= threshold) {
-      process.stderr.write(`[noticed-mcp] [${lvl}] ${msg}\n`);
-    }
-  };
-  return {
-    debug: (msg) => emit("debug", msg),
-    info: (msg) => emit("info", msg),
-    warn: (msg) => emit("warn", msg),
-    error: (msg) => emit("error", msg),
-  };
 }

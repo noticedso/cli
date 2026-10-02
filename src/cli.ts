@@ -6,6 +6,7 @@
  * Environment:
  *   NOTICED_API_URL   Base URL of your noticed instance
  *   NOTICED_API_KEY   API key for authentication
+ *   NOTICED_MCP_URL   Optional remote MCP endpoint for the stdio bridge
  */
 
 import { Command, CommanderError } from "commander";
@@ -72,11 +73,11 @@ Examples:
 // ── mcp ─────────────────────────────────────────────────────────────────────
 program
   .command("mcp")
-  .description("Start the MCP (Model Context Protocol) server over stdio for AI agent integration")
+  .description("Bridge stdio clients to the canonical noticed MCP")
   .option("--log-level <level>", "Log level (debug, info, warn, error)", "warn")
   .addHelpText("after", `
 Examples:
-  noticed mcp                           Start MCP server
+  noticed mcp                           Start the stdio bridge
   noticed mcp --log-level debug         Start with debug logging
 
 MCP Setup (Claude Code / Cursor):

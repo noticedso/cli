@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "noticed",
-  "version": "0.3.3",
-  "description": "Search professional networks with noticed through a portable Agent Skill and MCP server.",
+  "version": "0.4.0",
+  "description": "Search professional networks with noticed through a portable Agent Skill and canonical MCP stdio bridge.",
   "author": {
     "name": "noticed",
     "url": "https://www.noticed.so"

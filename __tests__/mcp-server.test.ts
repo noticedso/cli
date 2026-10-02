@@ -1,99 +1,112 @@
-import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
+import { basename } from "node:path";
+import { describe, expect, it } from "vitest";
 
-import {
-  SearchArgsSchema,
-  ExecuteArgsSchema,
-} from "../src/mcp-server.js";
+import { buildMcpProxyLaunchConfig } from "../src/mcp-server.js";
 
-describe("MCP Input Validation — SearchArgs", () => {
-  it("accepts an empty object and defaults limit to 50", () => {
-    const result = SearchArgsSchema.safeParse({});
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.limit).toBe(50);
-      expect(result.data.query).toBeUndefined();
-      expect(result.data.category).toBeUndefined();
-    }
-  });
-
-  it("accepts query + category + limit", () => {
-    const result = SearchArgsSchema.safeParse({
-      query: "missions",
-      category: "missions",
-      limit: 10,
+describe("noticed MCP stdio proxy", () => {
+  it("resolves the packaged proxy entrypoint", () => {
+    const config = buildMcpProxyLaunchConfig({
+      env: { NOTICED_API_KEY: "nk_live_test" },
     });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.query).toBe("missions");
-      expect(result.data.category).toBe("missions");
-      expect(result.data.limit).toBe(10);
-    }
+
+    expect(existsSync(config.args[0] ?? "")).toBe(true);
   });
 
-  it("rejects limit > 50", () => {
-    const result = SearchArgsSchema.safeParse({ limit: 100 });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects limit < 1", () => {
-    const result = SearchArgsSchema.safeParse({ limit: 0 });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects non-integer limit", () => {
-    const result = SearchArgsSchema.safeParse({ limit: 12.5 });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe("MCP Input Validation — ExecuteArgs", () => {
-  it("accepts a capability name with no args", () => {
-    const result = ExecuteArgsSchema.safeParse({ capability: "list_missions" });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.capability).toBe("list_missions");
-      expect(result.data.args).toBeUndefined();
-    }
-  });
-
-  it("accepts a capability name with an args object", () => {
-    const result = ExecuteArgsSchema.safeParse({
-      capability: "get_person_dossier",
-      args: { github_user_id: 12345 },
+  it("bridges the canonical hosted MCP without putting the API key in process arguments", () => {
+    const config = buildMcpProxyLaunchConfig({
+      env: { NOTICED_API_KEY: "nk_live_test-secret" },
+      proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
     });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.args).toEqual({ github_user_id: 12345 });
-    }
+
+    expect(config.command).toBe(process.execPath);
+    expect(basename(config.args[0] ?? "")).toBe("proxy.js");
+    expect(config.args).toContain("https://mcp.noticed.so/api/mcp");
+    expect(config.args).toContain("http-only");
+    expect(config.args).toContain(
+      "Authorization:${NOTICED_MCP_REMOTE_AUTHORIZATION}",
+    );
+    expect(config.args.join(" ")).not.toContain("nk_live_test-secret");
+    expect(config.env["NOTICED_MCP_REMOTE_AUTHORIZATION"]).toBe(
+      "Bearer nk_live_test-secret",
+    );
   });
 
-  it("rejects missing capability", () => {
-    const result = ExecuteArgsSchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects empty capability", () => {
-    const result = ExecuteArgsSchema.safeParse({ capability: "" });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects args that is not an object", () => {
-    const result = ExecuteArgsSchema.safeParse({
-      capability: "list_missions",
-      args: "not-an-object",
+  it("uses an explicit remote MCP URL when configured", () => {
+    const config = buildMcpProxyLaunchConfig({
+      env: {
+        NOTICED_API_KEY: "nk_live_test",
+        NOTICED_MCP_URL: "https://relationships.example/mcp",
+      },
+      proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
     });
-    expect(result.success).toBe(false);
-  });
-});
 
-describe("MCP Protocol — JSON-RPC error codes", () => {
-  it("defines standard error codes", () => {
-    // Verify the error codes match the JSON-RPC 2.0 spec
-    expect(-32700).toBe(-32700); // Parse error
-    expect(-32600).toBe(-32600); // Invalid Request
-    expect(-32601).toBe(-32601); // Method not found
-    expect(-32602).toBe(-32602); // Invalid params
-    expect(-32603).toBe(-32603); // Internal error
-    expect(-32002).toBe(-32002); // Server not ready (MCP extension)
+    expect(config.args).toContain("https://relationships.example/mcp");
+  });
+
+  it("derives a self-hosted MCP endpoint from NOTICED_API_URL", () => {
+    const config = buildMcpProxyLaunchConfig({
+      env: {
+        NOTICED_API_KEY: "nk_live_test",
+        NOTICED_API_URL: "https://noticed.example/base/",
+      },
+      proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
+    });
+
+    expect(config.args).toContain("https://noticed.example/api/mcp");
+  });
+
+  it.each(["https://noticed.so", "https://www.noticed.so/"])(
+    "maps the hosted app URL %s to the canonical MCP host",
+    (hostedAppUrl) => {
+      const config = buildMcpProxyLaunchConfig({
+        env: {
+          NOTICED_API_KEY: "nk_live_test",
+          NOTICED_API_URL: hostedAppUrl,
+        },
+        proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
+      });
+
+      expect(config.args).toContain("https://mcp.noticed.so/api/mcp");
+    },
+  );
+
+  it("allows an explicitly configured HTTP endpoint for local self-hosting", () => {
+    const config = buildMcpProxyLaunchConfig({
+      env: {
+        NOTICED_API_KEY: "nk_live_test",
+        NOTICED_MCP_URL: "http://127.0.0.1:3012/api/mcp",
+      },
+      proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
+    });
+
+    expect(config.args).toContain("--allow-http");
+  });
+
+  it("enables proxy debug logging only for the debug log level", () => {
+    const debug = buildMcpProxyLaunchConfig({
+      env: { NOTICED_API_KEY: "nk_live_test" },
+      logLevel: "debug",
+      proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
+    });
+    const quiet = buildMcpProxyLaunchConfig({
+      env: { NOTICED_API_KEY: "nk_live_test" },
+      logLevel: "warn",
+      proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
+    });
+
+    expect(debug.args).toContain("--debug");
+    expect(quiet.args).not.toContain("--debug");
+    expect(debug.args).toContain("--silent");
+    expect(quiet.args).toContain("--silent");
+  });
+
+  it("fails before spawning when no API key is configured", () => {
+    expect(() =>
+      buildMcpProxyLaunchConfig({
+        env: {},
+        proxyEntrypoint: "/tmp/mcp-remote/dist/proxy.js",
+      }),
+    ).toThrow(/Missing NOTICED_API_KEY/);
   });
 });
